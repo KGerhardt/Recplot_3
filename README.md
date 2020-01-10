@@ -1,21 +1,7 @@
 # Recplot_4
 Recruitment plot scripts designed to allow for the translation of multiple formats of reads into recruitment plots, to mass-generate recplots early in a project, and to generate interactive recruitment plots that allow for more thorough exploration of your data.
 
-Currently, this is not a package that can be downloaded and loaded into R with library(...). That comes later.
-
-You will have to ensure that you have the following packages installed before anything else:
-
-data.table
-
-ggplot2
-
-shiny
-
-plotly
-
-enveomics.R
-
-and for faster generation of many plots, doParallel
+Currently, the recplot scripts are not packages that can be downloaded and loaded into R with library(...). That comes later.
 
 There are 3 scripts that are now involved here:
 
@@ -29,6 +15,18 @@ Please note that you should filter these beforehand to have only contigs that yo
 
 *Recplot4_Static.R*
 
+Requires these packages:
+
+data.table
+
+ggplot2
+
+enveomics.R
+
+cowplot
+
+(for parallel processing) doParallel
+
 Usage: Rscript/R CMD BATCH Recplot4_Static.R -dir [directory with lim and rec files]* -lib [R library directory]* -t [num threads] -id [pct. ID bin size] -w [genome bin width in bp] -sep [T or F to combine plots into 1 PDF or produce 1 PDF per plot, resp.] -lin_hist [T or F; base pair by pct ID histogram linear or log scale, resp.] -in_grp [Lower pct. ID boundary for a read to be classified as an in-group read]
 
 * denotes a required option
@@ -38,6 +36,18 @@ This is a script designed for mass-producing recruitment plots from a set of man
 If multiple threads are called, the script expects a unix environment. Parallelization occurs over lim/rec files, so each thread will handle one set of lim/rec files at a time. All other options are still available.
 
 *Recplot4_Interactive.R*
+
+Requires these packages:
+
+data.table
+
+ggplot2
+
+enveomics.R
+
+plotly
+
+shiny
 
 This script contains functions for producing interactive recruitment plots. Its contents are to be run from an interactive session of R, and after running the contents of the script, it expects manual usage of the recplot_suite function, where a user gives the prefix for a lim/rec pair in their current R session directory.
 
