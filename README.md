@@ -23,7 +23,7 @@ There are 3 scripts that are now involved here:
 
 Usage: Recplot_Prep.py -c [contigs FASTA file] -r [blast, magicblast, or SAM format reads] -f [format (sam, blast, magic)], -o [output file name prefix]
 
-A python script which generates two files used by the recplot scripts from a set of contigs and reads aligned to those contigs. 
+A python script which generates two files (prefix.lim and prefix.rec) used by the recplot scripts from a set of contigs and reads aligned to those contigs. 
 
 Please note that you should filter these beforehand to have only contigs that you are interested in inside the contigs file, and only reads aligning to those contigs in the reads file.
 
