@@ -12,6 +12,8 @@ def handle_blast(adjuster, reads, prefix):
 	rec = open(prefix+".rec", "w")
 	
 	for line in blast:
+		segment = line.split("\t")
+		
 		ref = segment[1]
 		segment = line.split("\t")
 		pct_id = segment[3]
