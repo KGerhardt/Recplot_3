@@ -15,10 +15,14 @@ def handle_blast(adjuster, reads, prefix):
 		segment = line.split("\t")
 		
 		ref = segment[1]
-		segment = line.split("\t")
-		pct_id = segment[3]
-		start = int(segment[8])+adjuster[ref]
-		end = start+int(segment[9])
+
+		pct_id = segment[2]
+		
+		pos1 = int(segment[8])
+		pos2 = int(segment[9])
+		
+		start = min(pos1, pos2)+adjuster[ref]
+		end = start+(max(pos1, pos2)-min(pos1, pos2))
 		name = segment[0]
 		
 		rec.write(str(start)+"\t"+str(end)+"\t"+pct_id+"\t"+name+"\n")
@@ -35,14 +39,23 @@ def handle_magic_blast(adjuster, reads, prefix):
 	magic = open(reads)
 	rec = open(prefix+".rec", "w")
 	
+	
+	
 	for line in magic:
+		if line.startswith("#"):
+			pass
+		
 		segment = line.split("\t")
 		
 		ref = segment[1]
-		segment = line.split("\t")
-		pct_id = segment[3]
-		start = int(segment[8])+adjuster[ref]
-		end = start+int(segment[9])
+
+		pct_id = segment[2]
+		
+		pos1 = int(segment[8])
+		pos2 = int(segment[9])
+		
+		start = min(pos1, pos2)+adjuster[ref]
+		end = start+(max(pos1, pos2)-min(pos1, pos2))
 		name = segment[0]
 		
 		rec.write(str(start)+"\t"+str(end)+"\t"+pct_id+"\t"+name+"\n")
