@@ -43,7 +43,7 @@ def handle_magic_blast(adjuster, reads, prefix):
 	
 	for line in magic:
 		if line.startswith("#"):
-			pass
+			continue
 		
 		segment = line.split("\t")
 		
