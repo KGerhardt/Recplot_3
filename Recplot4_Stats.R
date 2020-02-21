@@ -132,13 +132,15 @@ recplot_4_statistics <- function(prefixes, threads = 1){
       tad_indices <- seq(0, .25, by = 0.025)
       tad_indices <- round(length(coverage_and_depth) * tad_indices)
       
-      
+      breadth <- numeric(0)
       
       TADs <- lapply(rev(LR[[2]]), function(j){
         
         j[, update_CD(V1, V2), by = id]
         
         tmp <- sort(coverage_and_depth)
+        
+        breadth <<- c(breadth, 1-(sum(tmp==0)/bin_cap))
         
         tad_values <- unlist(lapply(tad_indices, function(y){
           
@@ -154,9 +156,13 @@ recplot_4_statistics <- function(prefixes, threads = 1){
       
       tad_table <- data.table(cbind(rev(ANIr_in_group_levels), do.call(rbind, TADs)))
       
+      breadths <- data.table(Minimum_Percent_Identity = rev(ANIr_in_group_levels), Breadth_of_Coverage = breadth)
+      
       names(tad_table) = c("Minimum_Percent_Identity", paste0("TAD_", (1-seq(0, .25, by = 0.025))*100))
       
       fwrite(tad_table, paste0(i, "_TAD_Stats.tsv"), sep = "\t")
+      
+      fwrite(breadths, paste0(i, "_Coverage_Breadth_Stats.tsv"), sep = "\t")
       
       return(NA)
       
@@ -241,13 +247,15 @@ recplot_4_statistics <- function(prefixes, threads = 1){
     tad_indices <- seq(0, .25, by = 0.025)
     tad_indices <- round(length(coverage_and_depth) * tad_indices)
     
-    
+    breadth <- numeric(0)
     
     TADs <- lapply(rev(LR[[2]]), function(j){
       
       j[, update_CD(V1, V2), by = id]
       
       tmp <- sort(coverage_and_depth)
+      
+      breadth <<- c(breadth, 1-(sum(tmp==0)/bin_cap))
       
       tad_values <- unlist(lapply(tad_indices, function(y){
         
@@ -263,9 +271,13 @@ recplot_4_statistics <- function(prefixes, threads = 1){
     
     tad_table <- data.table(cbind(rev(ANIr_in_group_levels), do.call(rbind, TADs)))
     
+    breadths <- data.table(Minimum_Percent_Identity = rev(ANIr_in_group_levels), Breadth_of_Coverage = breadth)
+    
     names(tad_table) = c("Minimum_Percent_Identity", paste0("TAD_", (1-seq(0, .25, by = 0.025))*100))
     
     fwrite(tad_table, paste0(i, "_TAD_Stats.tsv"), sep = "\t")
+    
+    fwrite(breadths, paste0(i, "_Coverage_Breadth_Stats.tsv"), sep = "\t")
     
     return(NA)
   }
