@@ -43,7 +43,7 @@ def handle_magic_blast(adjuster, reads, prefix):
 	
 	for line in magic:
 		if line.startswith("#"):
-			continue
+			pass
 		
 		segment = line.split("\t")
 		
@@ -77,7 +77,7 @@ def handle_sam(adjuster, reads, prefix):
 			continue
 		else :
 			#This flag is neither guaranteed to be present or in the same column. Has to be found.
-			mdz_seg = re.search('MD:Z:(.+)\t', line).group(1)
+			mdz_seg = re.search('MD:Z:(.+)\t', line).group(1).split("\t")[0]
 			match_count = re.findall('[0-9]+', mdz_seg)
 			
 			sum=0

@@ -14,6 +14,26 @@ separate <- which(grepl("-sep", options))
 lin_hist <- which(grepl("-lin_hist", options))
 in_group <- which(grepl("-in_grp", options))
 
+help <- which(grepl("-h", options))
+help2 <- which(grepl("-help", options))
+help3 <- which(grepl("--help", options))
+
+if(any(!identical(help, check_for_default) | !identical(help2, check_for_default) | !identical(help3, check_for_default))){
+  print("Usage Options:")
+ 
+  print("-dir [directory containing lim/rec files to make recplots for]")
+  print("-lb [INT: Lower pct. ID boundary for recplot plotting area Def. 70]")
+  print("-hb [INT: Uper pct. ID boundary for recplot plotting area. You shouldn't use this. Def. 100]")
+  print("-threads [INT: Number of threads to use for parallel. Only works with unix OS. Def. 1]")
+  print("-id [Decimal: Width of pct ID bins. Def. 0.5]")
+  print("-w [INT: Approx. num. bp. for genome bins. Def. 1000]")
+  print("-sep [T or F. Produce one PDF per lim/rec file if T; Produce 1 PDF with all recplots if F. Def. T.]")
+  print("-lin_hist [T or F. Linear scale on BP histogram (lower right panel) if T, log10 scale if F]")
+  print("-in_grp [Decimal: Lower pct. ID boundary for in-group (Dark blue) on recplot. Def. 95]")
+  
+  quit(save = "no") 
+}
+
 if(identical(directory, check_for_default)){
   print("You must specify a directory using the -dir option.")
   print("This should be the directory which contains all of the .lim and .rec files you wish to generate recplots from.")
@@ -168,7 +188,7 @@ get_counts <- function(start_pos, end_pos, pos.breaks){
     len <- len_set[i]
     
     output[start_bin] <- output[start_bin] + len
-    
+
     while(ends > bin_end){
       while_counter[start_bin] <- while_counter[start_bin] + 1
       
@@ -203,6 +223,12 @@ get_lim_rec <- function(prefix){
                sep = "\t", quote = "")
   lim <- fread(cmd = paste("grep -v '^#' ", prefix, ".lim", sep = ""), 
                sep = "\t", quote = "")
+  
+  if(any(rec$V2 >= max(lim$V3))){
+    print("Oddity in rec file: read aligned at greater than end of last contig.")
+    rec <- rec[V2<max(lim$V3),]
+  }
+  
   return(list(lim, rec))
 }
 
@@ -650,7 +676,7 @@ recplot4_generate_static_plots <- function(prefixes,
       
       for(i in 1:length(plots)){
         if(length(plots[[i]])==9){
-          pdf(paste0(prefixes_lim[i],"_recplot.pdf"), width = 17, height = 11)
+          pdf(paste0(prefixes_lim[i],".pdf"), width = 17, height = 11)
           print(plots[[i]])
           dev.off()
         }

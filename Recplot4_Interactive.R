@@ -55,6 +55,12 @@ get_lim_rec <- function(prefix){
                sep = "\t", quote = "")
   lim <- fread(cmd = paste("grep -v '^#' ", prefix, ".lim", sep = ""), 
                sep = "\t", quote = "")
+  
+  if(any(rec$V2 >= max(lim$V3))){
+    print("Oddity in rec file: read aligned at greater than end of last contig.")
+    rec <- rec[V2<max(lim$V3),]
+  }
+  
   return(list(lim, rec))
 }
 
