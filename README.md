@@ -5,9 +5,9 @@ Currently, the recplot scripts are not packages that can be downloaded and loade
 
 There are 3 scripts that are now involved here:
 
-*Recplot_Prep.py*
+*recplot_matrix.py*
 
-Usage: Recplot_Prep.py -c [contigs FASTA file] -r [blast, magicblast, or SAM format reads] -f [format (sam, blast, magic)], -o [output file name prefix]
+Usage: Recplot_Prep.py -c [contigs FASTA file] -r [blast, magicblast, or SAM format reads] -f [format (sam, blast)], -o [output file name prefix] --interactive -m [MAGs file]
 
 A python script which generates two files (prefix.lim and prefix.rec) used by the recplot scripts from a set of contigs and reads aligned to those contigs. 
 
