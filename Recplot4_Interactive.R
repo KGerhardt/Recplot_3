@@ -50,15 +50,36 @@ get_matrix <- function(rec, pos.breaks, id.breaks, rec.idcol){
   counts <- t(do.call(rbind, counts))
 }
 
-get_lim_rec <- function(prefix){
-  rec <- fread(cmd = paste("grep -v '^#' ", prefix, ".rec", sep = ""), 
-               sep = "\t", quote = "")
-  lim <- fread(cmd = paste("grep -v '^#' ", prefix, ".lim", sep = ""), 
-               sep = "\t", quote = "")
+get_lim_rec <- function(prefix, MAG){
+  rec <- fread(cmd = paste0("grep '^",MAG, "' ", prefix, ".rec"), 
+               sep = "\t", quote = "", select = c(2:5))
   
-  if(any(rec$V2 >= max(lim$V3))){
+  colnames(rec) = c("V1", "V2", "V3", "V4")
+
+  lim <- fread(cmd = paste0("grep '^",MAG, "' ", prefix, ".lim"), 
+               sep = "\t", quote = "", select = c(2:4))
+  
+  colnames(lim) = c("V1", "V2", "V3")
+  
+  #Lim math done here
+  if(nrow(lim) > 1){
+    
+    for(i in 2:nrow(lim)){
+      lim$V2[i] <- lim$V2[i]+lim$V3[i-1]
+      lim$V3[i] <- lim$V3[i]+lim$V3[i-1]
+    }
+    
+  }
+  
+  #rec adjust done here
+  rec[, V1 := V1+lim$V2[match(V4, lim$V1)]-1, ]
+  rec[, V2 := V2+lim$V2[match(V4, lim$V1)]-1, ]
+  
+  rec[, V4 := NULL]
+  
+  if(any(rec$V2 > max(lim$V3))){
     print("Oddity in rec file: read aligned at greater than end of last contig.")
-    rec <- rec[V2<max(lim$V3),]
+    rec <- rec[V2<=max(lim$V3),]
   }
   
   return(list(lim, rec))
@@ -100,32 +121,11 @@ recplot_4_make_frame <- function(lim,
   
 }
 
-handle_gff3 <- function(gff_file, adjust=LR[[1]]){
-  
-  gff_dat <- fread(cmd=paste("grep -v '#'", gff_file), sep = "\t")
-  colnames(gff_dat) = c("contig","prog","feature","start","end","score","strand","phase","annotation")
-  
-  if(!all(gff_dat$contig %in% adjust$V1)){
-    print("Sequence names do not match between lim/rec file and predicted genes file. Check to ensure the names match.")
-  }
-  
-  gff_dat$pad = adjust$V2[match(gff_dat$contig, adjust$V1)]
-  
-  gff_dat[,start := start+pad-1]
-  gff_dat[,end := end+pad-1]
-  
-  gff_dat$pad = NULL
-  
-  gff_dat$endpoint = ifelse(gff_dat$strand=="+", 1, -1)
-  
-  return(gff_dat)
-  
-}
 
 #Primary interactive function 
-recplot_suite <- function(prefix){
+recplot_suite <- function(prefix, mag_name){
   
-  LR <- get_lim_rec(prefix)
+  LR <- get_lim_rec(prefix, MAG = mag_name)
   
   bp_unit <- c("(bp)", "(Kbp)", "(Mbp)", "(Gbp)")[findInterval(log10(max(LR[[1]]$V3, na.rm = T)), c(0,3,6,9,12,Inf))]
   bp_div <- c(1, 1e3, 1e6, 1e9)[findInterval(log10(max(LR[[1]]$V3, na.rm = T)), c(0,3,6,9,12,Inf))]
@@ -496,6 +496,28 @@ recplot_suite <- function(prefix){
   
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#NOT READY
 recplot_suite_genes_summary <- function(prefix, genes_file){
     
     LR <- get_lim_rec(prefix)
@@ -926,3 +948,26 @@ recplot_suite_genes_summary <- function(prefix, genes_file){
     
   }
   
+
+#NOT READY
+handle_gff3 <- function(gff_file, adjust=LR[[1]]){
+  
+  gff_dat <- fread(cmd=paste("grep -v '#'", gff_file), sep = "\t")
+  colnames(gff_dat) = c("contig","prog","feature","start","end","score","strand","phase","annotation")
+  
+  if(!all(gff_dat$contig %in% adjust$V1)){
+    print("Sequence names do not match between lim/rec file and predicted genes file. Check to ensure the names match.")
+  }
+  
+  gff_dat$pad = adjust$V2[match(gff_dat$contig, adjust$V1)]
+  
+  gff_dat[,start := start+pad-1]
+  gff_dat[,end := end+pad-1]
+  
+  gff_dat$pad = NULL
+  
+  gff_dat$endpoint = ifelse(gff_dat$strand=="+", 1, -1)
+  
+  return(gff_dat)
+  
+}
