@@ -104,73 +104,141 @@ def prepare_matrices(contig_file_name, width, bin_height, id_lower):
 	
 #This function is designed to take sam-format lines piped from a samtools view command 
 #and fill a recruitment matrix with them, terminating further processing there.		
-def receive_sam(matrix, breaks, export):
+def receive_sam(matrix, breaks, export, reads):
 	
-	for line in sys.stdin:
-	#DON'T pop the line out to console again in this version
-		if export:
-			print(line, end='') 
-		#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
-		if "MD:Z:" not in line:
-			continue
-		else :
-			segment = line.split()
-			
-			ref = segment[2]
-			
-			if ref not in matrix:
+	if reads == "":
+
+		for line in sys.stdin:
+		#DON'T pop the line out to console again in this version
+			if export:
+				print(line, end='') 
+			#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
+			if "MD:Z:" not in line:
 				continue
-			
-			#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
-			iter = len(segment)-1
-			mdz_seg = segment[iter]
-			
-			#If it's not the correct field, proceed until it is.
-			while not mdz_seg.startswith("MD:Z:"):
-				iter -= 1
+			else :
+				segment = line.split()
+				
+				ref = segment[2]
+				
+				if ref not in matrix:
+					continue
+				
+				#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
+				iter = len(segment)-1
 				mdz_seg = segment[iter]
-			
-			#Remove the MD:Z: flag from the start
-			mdz_seg = mdz_seg[5:]
-			
-			match_count = re.findall('[0-9]+', mdz_seg)
-			
-			sum=0
-			
-			for num in match_count:
-				sum+=int(num)
-			
-			total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
-			
-			pct_id = (sum/(total_count))*100
-			which_id = bisect.bisect_right(breaks, pct_id)-1
-			
-			start = int(segment[3])
-			end = start+total_count-1
-			
-			
-			#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
-			start_idx = bisect.bisect_left(matrix[ref][1], start)
-			end_idx = bisect.bisect_left(matrix[ref][1], end)
-			
-			#there are (a very small number of) reads which align past the end of the contig. This removes them.
-			if end_idx == len(matrix[ref][1]):
+				
+				#If it's not the correct field, proceed until it is.
+				while not mdz_seg.startswith("MD:Z:"):
+					iter -= 1
+					mdz_seg = segment[iter]
+				
+				#Remove the MD:Z: flag from the start
+				mdz_seg = mdz_seg[5:]
+				
+				match_count = re.findall('[0-9]+', mdz_seg)
+				
+				sum=0
+				
+				for num in match_count:
+					sum+=int(num)
+				
+				total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+				
+				pct_id = (sum/(total_count))*100
+				which_id = bisect.bisect_right(breaks, pct_id)-1
+				
+				start = int(segment[3])
+				end = start+total_count-1
+				
+				
+				#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
+				start_idx = bisect.bisect_left(matrix[ref][1], start)
+				end_idx = bisect.bisect_left(matrix[ref][1], end)
+				
+				#there are (a very small number of) reads which align past the end of the contig. This removes them.
+				if end_idx == len(matrix[ref][1]):
+					continue
+				
+				#If the read just falls into 1 bin, throw it right on in
+				if start_idx==end_idx:
+					matrix[ref][2][start_idx][which_id] += total_count
+				#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
+				else:
+					for j in range(start_idx, end_idx+1):
+						overflow = end - matrix[ref][1][j]
+						if overflow > 0:
+							matrix[ref][2][j][which_id] += (total_count-overflow)
+							total_count = overflow
+						else :
+							matrix[ref][2][j][which_id] += total_count
+	else:
+	
+		rd = open(reads, "r")
+	
+		for line in rd:
+		
+			#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
+			if "MD:Z:" not in line:
 				continue
-			
-			#If the read just falls into 1 bin, throw it right on in
-			if start_idx==end_idx:
-				matrix[ref][2][start_idx][which_id] += total_count
-			#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
-			else:
-				for j in range(start_idx, end_idx+1):
-					overflow = end - matrix[ref][1][j]
-					if overflow > 0:
-						matrix[ref][2][j][which_id] += (total_count-overflow)
-						total_count = overflow
-					else :
-						matrix[ref][2][j][which_id] += total_count
-						
-						
+			else :
+				segment = line.split()
+				
+				ref = segment[2]
+				
+				if ref not in matrix:
+					continue
+				
+				#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
+				iter = len(segment)-1
+				mdz_seg = segment[iter]
+				
+				#If it's not the correct field, proceed until it is.
+				while not mdz_seg.startswith("MD:Z:"):
+					iter -= 1
+					mdz_seg = segment[iter]
+				
+				#Remove the MD:Z: flag from the start
+				mdz_seg = mdz_seg[5:]
+				
+				match_count = re.findall('[0-9]+', mdz_seg)
+				
+				sum=0
+				
+				for num in match_count:
+					sum+=int(num)
+				
+				total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+				
+				pct_id = (sum/(total_count))*100
+				which_id = bisect.bisect_right(breaks, pct_id)-1
+				
+				start = int(segment[3])
+				end = start+total_count-1
+				
+				
+				#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
+				start_idx = bisect.bisect_left(matrix[ref][1], start)
+				end_idx = bisect.bisect_left(matrix[ref][1], end)
+				
+				#there are (a very small number of) reads which align past the end of the contig. This removes them.
+				if end_idx == len(matrix[ref][1]):
+					continue
+				
+				#If the read just falls into 1 bin, throw it right on in
+				if start_idx==end_idx:
+					matrix[ref][2][start_idx][which_id] += total_count
+				#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
+				else:
+					for j in range(start_idx, end_idx+1):
+						overflow = end - matrix[ref][1][j]
+						if overflow > 0:
+							matrix[ref][2][j][which_id] += (total_count-overflow)
+							total_count = overflow
+						else :
+							matrix[ref][2][j][which_id] += total_count
+	
+		rd.close()
+		
 	return(matrix)
 
 #formats and prints a TSV with the correct output matrices.
@@ -329,56 +397,107 @@ def receive_sam_anir(matrix, breaks, export):
 						
 	return(matrix, ANIr_collections)
 
-def receive_blast_like(matrix, breaks, export):
+def receive_blast_like(matrix, breaks, export, reads):
 	
-	for line in sys.stdin:
+	if reads == "":
 	
-		if line.startswith("#"):
-			pass
+		for line in sys.stdin:
+		
+			if line.startswith("#"):
+				pass
+				
+			if export:
+				print(line, end='') 
+		
+			segment = line.split("\t")
 			
-		if export:
-			print(line, end='') 
-	
-		segment = line.split("\t")
-		
-		ref = segment[1]
-		
-		if ref not in matrix:
-			continue
+			ref = segment[1]
+			
+			if ref not in matrix:
+				continue
 
-		pct_id = float(segment[2])
-		
-		pos1 = int(segment[8])
-		pos2 = int(segment[9])
-		
-		start = min(pos1, pos2)
-		end = start+(max(pos1, pos2)-min(pos1, pos2))
-		
-		total_count = end-start+1
-		which_id = bisect.bisect_right(breaks, pct_id)-1
-		
-		#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
-		start_idx = bisect.bisect_left(matrix[ref][1], start)
-		end_idx = bisect.bisect_left(matrix[ref][1], end)
-		
-		#there are (a very small number of) reads which align past the end of the contig. This removes them.
-		if end_idx == len(matrix[ref][1]):
-			continue
-		
-		#If the read just falls into 1 bin, throw it right on in
-		if start_idx==end_idx:
-			matrix[ref][2][start_idx][which_id] += total_count
-		#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
-		else:
-			for j in range(start_idx, end_idx+1):
-				overflow = end - matrix[ref][1][j]
-				if overflow > 0:
-					matrix[ref][2][j][which_id] += (total_count-overflow)
-					total_count = overflow
-				else :
-					matrix[ref][2][j][which_id] += total_count
+			pct_id = float(segment[2])
+			
+			pos1 = int(segment[8])
+			pos2 = int(segment[9])
+			
+			start = min(pos1, pos2)
+			end = start+(max(pos1, pos2)-min(pos1, pos2))
+			
+			total_count = end-start+1
+			which_id = bisect.bisect_right(breaks, pct_id)-1
+			
+			#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
+			start_idx = bisect.bisect_left(matrix[ref][1], start)
+			end_idx = bisect.bisect_left(matrix[ref][1], end)
+			
+			#there are (a very small number of) reads which align past the end of the contig. This removes them.
+			if end_idx == len(matrix[ref][1]):
+				continue
+			
+			#If the read just falls into 1 bin, throw it right on in
+			if start_idx==end_idx:
+				matrix[ref][2][start_idx][which_id] += total_count
+			#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
+			else:
+				for j in range(start_idx, end_idx+1):
+					overflow = end - matrix[ref][1][j]
+					if overflow > 0:
+						matrix[ref][2][j][which_id] += (total_count-overflow)
+						total_count = overflow
+					else :
+						matrix[ref][2][j][which_id] += total_count
 						
-						
+	else:
+	
+		rd = open(reads, "r")
+		
+		for line in rd:
+		
+			if line.startswith("#"):
+				pass
+		
+			segment = line.split("\t")
+			
+			ref = segment[1]
+			
+			if ref not in matrix:
+				continue
+
+			pct_id = float(segment[2])
+			
+			pos1 = int(segment[8])
+			pos2 = int(segment[9])
+			
+			start = min(pos1, pos2)
+			end = start+(max(pos1, pos2)-min(pos1, pos2))
+			
+			total_count = end-start+1
+			which_id = bisect.bisect_right(breaks, pct_id)-1
+			
+			#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
+			start_idx = bisect.bisect_left(matrix[ref][1], start)
+			end_idx = bisect.bisect_left(matrix[ref][1], end)
+			
+			#there are (a very small number of) reads which align past the end of the contig. This removes them.
+			if end_idx == len(matrix[ref][1]):
+				continue
+			
+			#If the read just falls into 1 bin, throw it right on in
+			if start_idx==end_idx:
+				matrix[ref][2][start_idx][which_id] += total_count
+			#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
+			else:
+				for j in range(start_idx, end_idx+1):
+					overflow = end - matrix[ref][1][j]
+					if overflow > 0:
+						matrix[ref][2][j][which_id] += (total_count-overflow)
+						total_count = overflow
+					else :
+						matrix[ref][2][j][which_id] += total_count
+		rd.close()
+
+	
 	return(matrix)
 			
 def receive_blast_like_anir(matrix, breaks):
@@ -725,12 +844,12 @@ def main():
 			
 			if format == "blast":
 				
-				mat = receive_blast_like(mat, breaks, export_lines)
+				mat = receive_blast_like(mat, breaks, export_lines, reads)
 				print_super_rec(mat, breaks, step, prefix, mags)
 				
 			else:
 			
-				mat = receive_sam(mat, breaks, export_lines)
+				mat = receive_sam(mat, breaks, export_lines, reads)
 				print_super_rec(mat, breaks, step, prefix, mags)
 			
 		else: 	
@@ -747,12 +866,12 @@ def main():
 				
 			if format == "blast":
 				
-				mat = receive_blast_like(mat, breaks, export_lines)
+				mat = receive_blast_like(mat, breaks, export_lines, reads)
 				print_super_rec(mat, breaks, step, prefix, mags)
 					
 			else:
 				
-				mat = receive_sam(mat, breaks, export_lines)
+				mat = receive_sam(mat, breaks, export_lines, reads)
 				print_super_rec(mat, breaks, step, prefix, mags)
 
 #Just runs main.
