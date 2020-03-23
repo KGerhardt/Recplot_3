@@ -101,83 +101,15 @@ def prepare_matrices(contig_file_name, width, bin_height, id_lower):
 
 		
 	return(matrices, id_breaks)
-
-#This function is designed to take sam-format lines piped directly from a magicblast or bowtie2 alignment with the sam header intact,
-#fill a recruitment matrix with the reads, and return the input to stdout for further in-line processing with pipes	
-def receive_sam_flush(matrix, breaks):
 	
-	for line in sys.stdin:
-	#DON'T pop the line out to console again in this version
-		print(line, end='') 
-		#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
-		if "MD:Z:" not in line:
-			continue
-		else :
-			segment = line.split()
-			
-			ref = segment[2]
-			
-			if ref not in matrix:
-				continue
-			
-			#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
-			iter = len(segment)-1
-			mdz_seg = segment[iter]
-			
-			#If it's not the correct field, proceed until it is.
-			while not mdz_seg.startswith("MD:Z:"):
-				iter -= 1
-				mdz_seg = segment[iter]
-			
-			#Remove the MD:Z: flag from the start
-			mdz_seg = mdz_seg[5:]
-			
-			match_count = re.findall('[0-9]+', mdz_seg)
-			
-			sum=0
-			
-			for num in match_count:
-				sum+=int(num)
-			
-			total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
-			
-			pct_id = (sum/(total_count))*100
-			which_id = bisect.bisect_right(breaks, pct_id)-1
-			
-			start = int(segment[3])
-			end = start+total_count-1
-			
-			#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
-			start_idx = bisect.bisect_left(matrix[ref][1], start)
-			end_idx = bisect.bisect_left(matrix[ref][1], end)
-			
-			#there are (a very small number of) reads which align past the end of the contig. This removes them.
-			if end_idx == len(matrix[ref][1]):
-				continue
-			
-			#If the read just falls into 1 bin, throw it right on in
-			if start_idx==end_idx:
-				matrix[ref][2][start_idx][which_id] += total_count
-			#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
-			else:
-				for j in range(start_idx, end_idx+1):
-					overflow = end - matrix[ref][1][j]
-					if overflow > 0:
-						matrix[ref][2][j][which_id] += (total_count-overflow)
-						total_count = overflow
-					else :
-						matrix[ref][2][j][which_id] += total_count
-						
-						
-	return(matrix)
-		
 #This function is designed to take sam-format lines piped from a samtools view command 
 #and fill a recruitment matrix with them, terminating further processing there.		
-def receive_sam(matrix, breaks):
+def receive_sam(matrix, breaks, export):
 	
 	for line in sys.stdin:
 	#DON'T pop the line out to console again in this version
-		#print(line, end='') 
+		if export:
+			print(line, end='') 
 		#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
 		if "MD:Z:" not in line:
 			continue
@@ -313,94 +245,9 @@ def print_super_rec_anir(matrix, breaks, step, prefix, anir_mat, mags):
 	
 	rec.close()
 
-#This function is designed to take sam-format lines piped directly from a magicblast or bowtie2 alignment with the sam header intact,
-#fill a recruitment matrix with the reads, and return the input to stdout for further in-line processing with pipes	
-def receive_sam_anir_flush(matrix, breaks):
-	#contig:min_pct_id:contribution, divisor
-	ANIr_collections = {}
-	
-	zeroes = []
-	
-	for i in breaks:
-		zeroes.append(0)
-	
-	#we need the read
-	for contig in matrix :
-		ANIr_collections[contig] = [zeroes[:], zeroes[:]]
-	
-
-	for line in sys.stdin:
-	#DO pop the line out to console again in this version
-		print(line, end='') 
-		#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
-		if "MD:Z:" not in line:
-			continue
-		else :
-			segment = line.split()
-			
-			ref = segment[2]
-			
-			if ref not in matrix:
-				continue
-			
-			#Often the MD:Z: field will be the last one in a magicblast SAM output, but not always. Therefore, start from the end and work in.
-			iter = len(segment)-1
-			mdz_seg = segment[iter]
-			
-			#If it's not the correct field, proceed until it is.
-			while not mdz_seg.startswith("MD:Z:"):
-				iter -= 1
-				mdz_seg = segment[iter]
-			
-			#Remove the MD:Z: flag from the start
-			mdz_seg = mdz_seg[5:]
-			
-			match_count = re.findall('[0-9]+', mdz_seg)
-			
-			sum=0
-			
-			for num in match_count:
-				sum+=int(num)
-			
-			total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
-			
-			pct_id = (sum/(total_count))*100
-			which_id = bisect.bisect_right(breaks, pct_id)-1
-
-
-			start = int(segment[3])
-			end = start+total_count-1
-			
-			ANIr_collections[ref][0][which_id] += (total_count*pct_id)/100
-			ANIr_collections[ref][1][which_id] += total_count
-			
-			#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
-			start_idx = bisect.bisect_left(matrix[ref][1], start)
-			end_idx = bisect.bisect_left(matrix[ref][1], end)
-			
-			#there are (a very small number of) reads which align past the end of the contig. This removes them.
-			if end_idx == len(matrix[ref][1]):
-				continue
-			
-			#If the read just falls into 1 bin, throw it right on in
-			if start_idx==end_idx:
-				matrix[ref][2][start_idx][which_id] += total_count
-			#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
-			else:
-				for j in range(start_idx, end_idx+1):
-					overflow = end - matrix[ref][1][j]
-					if overflow > 0:
-						matrix[ref][2][j][which_id] += (total_count-overflow)
-						total_count = overflow
-					else :
-						matrix[ref][2][j][which_id] += total_count
-						
-						
-	return(matrix, ANIr_collections)
-		
 #This function is designed to take sam-format lines piped from a samtools view command 
 #and fill a recruitment matrix with them, terminating further processing there.		
-def receive_sam_anir(matrix, breaks):
+def receive_sam_anir(matrix, breaks, export):
 	
 	#contig:min_pct_id:contribution, divisor
 	ANIr_collections = {}
@@ -416,7 +263,8 @@ def receive_sam_anir(matrix, breaks):
 	
 	for line in sys.stdin:
 	#DON'T pop the line out to console again in this version
-		#print(line, end='') 
+		if export:
+			print(line, end='') 
 		#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
 		if "MD:Z:" not in line:
 			continue
@@ -481,9 +329,16 @@ def receive_sam_anir(matrix, breaks):
 						
 	return(matrix, ANIr_collections)
 
-def receive_blast_like(matrix, breaks):
+def receive_blast_like(matrix, breaks, export):
 	
 	for line in sys.stdin:
+	
+		if line.startswith("#"):
+			pass
+			
+		if export:
+			print(line, end='') 
+	
 		segment = line.split("\t")
 		
 		ref = segment[1]
@@ -541,6 +396,9 @@ def receive_blast_like_anir(matrix, breaks):
 
 	for line in sys.stdin:
 		segment = line.split("\t")
+		
+		if line.startswith("#"):
+			pass
 		
 		ref = segment[1]
 		
@@ -625,6 +483,10 @@ def blast_rec_file(reads, MAGS, prefix):
 	
 	if reads == "":
 		for line in sys.stdin:
+			
+			if line.startswith("#"):
+				pass
+		
 			segment = line.split("\t")
 			
 			ref = segment[1]
@@ -647,6 +509,9 @@ def blast_rec_file(reads, MAGS, prefix):
 		rec = open(prefix+".rec", "w")
 			
 		for line in reads:
+		
+			if line.startswith("#"):
+				pass
 		
 			segment = line.split("\t")
 			
@@ -726,7 +591,7 @@ def sam_rec_file(reads, MAGS, prefix):
 		reads = open(reads, "r")
 		rec = open(prefix+".rec", "w")
 
-		for line in sys.stdin:
+		for line in reads:
 		#DON'T pop the line out to console again in this version
 			#print(line, end='') 
 			#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
@@ -849,8 +714,6 @@ def main():
 			else:
 				sam_rec_file(reads, mags, prefix)
 			
-			
-		
 	else:
 	
 		mat, breaks = prepare_matrices(contigs, width, step, 70)
@@ -862,34 +725,13 @@ def main():
 			
 			if format == "blast":
 				
-				#if do_stats:
-				#	mat, anir = receive_blast_like_anir(mat, breaks)
-				#	print_super_rec_anir(mat, breaks, step, prefix, anir, mags)
-				#else:
-				#	mat = receive_blast_like(mat, breaks)
-				#	print_super_rec(mat, breaks, step, prefix, mags)
-				
-				mat = receive_blast_like(mat, breaks)
+				mat = receive_blast_like(mat, breaks, export_lines)
 				print_super_rec(mat, breaks, step, prefix, mags)
 				
 			else:
 			
-				#if do_stats:
-				#	if export_lines:
-				#		mat, anir = receive_sam_anir_flush(mat, breaks)
-				#	else :
-				#		mat, anir = receive_sam_anir(mat, breaks)
-				#		print_super_rec_anir(mat, breaks, step, prefix, anir, mags)
-				#else:
-				#	if export_lines:
-				#		mat = receive_sam_flush(mat, breaks)
-				#	else :
-				#		mat = receive_sam(mat, breaks)
-				#		print_super_rec(mat, breaks, step, prefix, mags)
-			
-				mat = receive_sam(mat, breaks)
+				mat = receive_sam(mat, breaks, export_lines)
 				print_super_rec(mat, breaks, step, prefix, mags)
-			
 			
 		else: 	
 			mags = get_mags(MAGs)
@@ -905,32 +747,12 @@ def main():
 				
 			if format == "blast":
 				
-				#if do_stats:
-				#	mat, anir = receive_blast_like_anir(mat, breaks)
-				#	print_super_rec_anir(mat, breaks, step, prefix, anir, mags)
-				#else:
-				#	mat = receive_blast_like(mat, breaks)
-				#	print_super_rec(mat, breaks, step, prefix, mags)
-				
-				mat = receive_blast_like(mat, breaks)
+				mat = receive_blast_like(mat, breaks, export_lines)
 				print_super_rec(mat, breaks, step, prefix, mags)
 					
 			else:
-			
-				#if do_stats:
-				#	if export_lines:
-				#		mat, anir = receive_sam_anir_flush(mat, breaks)
-				#	else :
-				#		mat, anir = receive_sam_anir(mat, breaks)
-				#		print_super_rec_anir(mat, breaks, step, prefix, anir, mags)
-				#else:
-				#	if export_lines:
-				#		mat = receive_sam_flush(mat, breaks)
-				#	else :
-				#		mat = receive_sam(mat, breaks)
-				#		print_super_rec(mat, breaks, step, prefix, mags)
 				
-				mat = receive_sam(mat, breaks)
+				mat = receive_sam(mat, breaks, export_lines)
 				print_super_rec(mat, breaks, step, prefix, mags)
 
 #Just runs main.
