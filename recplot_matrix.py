@@ -940,13 +940,13 @@ def main():
     parser.add_argument("-r", "--reads", dest="reads", nargs='+', help = "This should be a file with reads aligned to your contigs in any of the following formats: tabular BLAST(outfmt 6), SAM, or Magic-BLAST")
     parser.add_argument("-f", "--format", dest="map_format", default="blast", help="The format of the reads file (write 'blast' or 'sam'). Defaults to tabular BLAST.")
     #parser.add_argument("-g", "--genes", dest="genes", default = "", help = "Optional GFF3 file containing gene starts and stops to be use in the recruitment plot.")
-    # parser.add_argument("-i", "--ID-step", dest="id_step", default = 0.5, help = "Percent identity bin width. Default 0.5.")
-    # parser.add_argument("-w", "--bin-width", dest="bin_width", default = 1000, help = "Approximate genome bin width in bp. Default 1000.")
-    # parser.add_argument("-o", "--output", dest="out_file_name", default = "recruitment_plot", help = "Prefix of results to be output. Default: 'recruitment_plot'")
-    # parser.add_argument("-e", "--export", dest="output_line", action='store_true', help = "Output sam lines to stdout?")
+    parser.add_argument("-i", "--ID-step", dest="id_step", default = 0.5, help = "Percent identity bin width. Default 0.5.")
+    parser.add_argument("-w", "--bin-width", dest="bin_width", default = 1000, help = "Approximate genome bin width in bp. Default 1000.")
+    parser.add_argument("-o", "--output", dest="out_file_name", default = "recruitment_plot", help = "Prefix of results to be output. Default: 'recruitment_plot'")
+    parser.add_argument("-e", "--export", dest="output_line", action='store_true', help = "Output sam lines to stdout?")
     parser.add_argument("-d", "--database", dest="sql_database", action='store', help = "SQLite database to create or update")
-    # parser.add_argument("-s", "--stats", dest="stats", action='store_true', help = "Write ANIr prep file?")
-    # parser.add_argument("--interact", dest="lim_rec", action='store_true', help = "Create lim/rec files for each MAG; do NOT make recruitment matrices.")
+    parser.add_argument("-s", "--stats", dest="stats", action='store_true', help = "Write ANIr prep file?")
+    parser.add_argument("--interact", dest="lim_rec", action='store_true', help = "Create lim/rec files for each MAG; do NOT make recruitment matrices.")
     
     args = parser.parse_args()
     
@@ -957,90 +957,90 @@ def main():
     mags = args.mags
     #! I changed format by map_format because format is a reserved word in python
     map_format = args.map_format
-    #genes = options.genes
-    # step = float(options.id_step)
-    # width = int(options.bin_width)
-    # prefix = options.out_file_name
-    # export_lines = options.output_line
-    #do_stats = options.stats
-    # interact = options.lim_rec
+    # genes = args.genes
+    step = float(args.id_step)
+    width = int(args.bin_width)
+    prefix = args.out_file_name
+    export_lines = args.output_line
+    do_stats = args.stats
+    interact = args.lim_rec
     sql_database = args.sql_database
     
     blast_like_to_db(contigs, mags, reads, map_format, sql_database)
-    # mags = {}
+    mags = {}
     
-    # if interact :
+    if interact :
     
-    #     c_len = read_contigs(contigs)
+        c_len = read_contigs(contigs)
     
-    #     if MAGs == "":
-    #         for key in c_len:
-    #             mags[key] = key
+        if MAGs == "":
+            for key in c_len:
+                mags[key] = key
         
-    #         print_lim(c_len, mags, prefix)
+            print_lim(c_len, mags, prefix)
             
-    #         if format == "blast":
-    #             blast_rec_file(reads, mags, prefix)
-    #         else:
-    #             sam_rec_file(reads, mags, prefix)
+            if format == "blast":
+                blast_rec_file(reads, mags, prefix)
+            else:
+                sam_rec_file(reads, mags, prefix)
             
-    #     else:
-    #         mags = get_mags(MAGs)
+        else:
+            mags = get_mags(MAGs)
             
-    #         removed_contigs = []
+            removed_contigs = []
             
-    #         for key in c_len:
-    #             if key not in mags:
-    #                 removed_contigs.append(key)
+            for key in c_len:
+                if key not in mags:
+                    removed_contigs.append(key)
                     
-    #         for c in removed_contigs:
-    #             del c_len[c]
+            for c in removed_contigs:
+                del c_len[c]
                 
-    #         print_lim(c_len, mags, prefix)	
+            print_lim(c_len, mags, prefix)	
             
-    #         if format == "blast":
-    #             blast_rec_file(reads, mags, prefix)
-    #         else:
-    #             sam_rec_file(reads, mags, prefix)
+            if format == "blast":
+                blast_rec_file(reads, mags, prefix)
+            else:
+                sam_rec_file(reads, mags, prefix)
             
-    # else:
+    else:
     
-    #     mat, breaks = prepare_matrices(contigs, width, step, 70)
+        mat, breaks = prepare_matrices(contigs, width, step, 70)
     
-    #     if MAGs == "":
-    #         #If MAGs aren't supplied, add a column specifying this
-    #         for key in mat:
-    #             mags[key] = key
+        if MAGs == "":
+            #If MAGs aren't supplied, add a column specifying this
+            for key in mat:
+                mags[key] = key
             
-    #         if format == "blast":
+            if format == "blast":
                 
-    #             mat = receive_blast_like(mat, breaks, export_lines, reads)
-    #             print_super_rec(mat, breaks, step, prefix, mags)
+                mat = receive_blast_like(mat, breaks, export_lines, reads)
+                print_super_rec(mat, breaks, step, prefix, mags)
                 
-    #         else:
+            else:
             
-    #             mat = receive_sam(mat, breaks, export_lines, reads)
-    #             print_super_rec(mat, breaks, step, prefix, mags)
+                mat = receive_sam(mat, breaks, export_lines, reads)
+                print_super_rec(mat, breaks, step, prefix, mags)
             
-    #     else: 	
-    #         mags = get_mags(MAGs)
+        else: 	
+            mags = get_mags(MAGs)
             
-    #         removed_contigs = []
+            removed_contigs = []
             
-    #         for key in mat:
-    #             if key not in mags:
-    #                 removed_contigs.append(key)
+            for key in mat:
+                if key not in mags:
+                    removed_contigs.append(key)
                     
-    #         for c in removed_contigs:
-    #             del mat[c]
+            for c in removed_contigs:
+                del mat[c]
                 
-    #         if format == "blast":
-    #             mat = receive_blast_like(mat, breaks, export_lines, reads)
-    #             print_super_rec(mat, breaks, step, prefix, mags)
+            if format == "blast":
+                mat = receive_blast_like(mat, breaks, export_lines, reads)
+                print_super_rec(mat, breaks, step, prefix, mags)
                     
-    #         else:
-    #             mat = receive_sam(mat, breaks, export_lines, reads)
-    #             print_super_rec(mat, breaks, step, prefix, mags)
+            else:
+                mat = receive_sam(mat, breaks, export_lines, reads)
+                print_super_rec(mat, breaks, step, prefix, mags)
 
 #Just runs main.
 if __name__ == "__main__":main()
