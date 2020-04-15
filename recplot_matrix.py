@@ -6,6 +6,463 @@ import bisect
 import sqlite3
 import argparse
 from sys import argv
+from Bio.SeqIO.FastaIO import SimpleFastaParser
+import numpy as np
+
+
+def sqldb_creation(contigs, mags, sample_reads, map_format, database):
+    """ Read information provided by user and creates SQLite3 database
+    
+    Arguments:
+        contigs {str} -- Location of fasta file with contigs of interest.
+        mags {str} -- Location of tab separated file with contigs and their corresponding mags.
+        sample_reads {list} -- Location of one or more read mapping results file(s).
+        format {str} -- Format of read mapping (blast or sam).
+        database {str} -- Name (location) of database to create.
+    """
+    
+    # ===== Database and table creation =====
+    # Create or open database
+    print("Creating databases...")
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    # Create lookup table (always creates a new one)
+    cursor.execute('DROP TABLE IF EXISTS lookup_table')
+    cursor.execute('CREATE TABLE lookup_table \
+        (mag_name TEXT, mag_id INTEGER, contig_name TEXT, contig_id INTEGER)')
+    # Create sample_info, mag_info, mags_per_sample, and gene_info tables
+    cursor.execute('DROP TABLE IF EXISTS mag_info')
+    cursor.execute('DROP TABLE IF EXISTS gene_info')
+    cursor.execute('DROP TABLE IF EXISTS sample_info')
+    cursor.execute('DROP TABLE IF EXISTS mags_per_sample')
+    cursor.execute('CREATE TABLE mag_info \
+        (mag_id INTEGER, contig_id INTEGER, contig_len INTEGER)')
+    cursor.execute('CREATE TABLE gene_info \
+        (mag_id INTEGER, contig_id INTEGER, gene TEXT, gene_start INTEGER, gene_stop INTEGER)')
+    cursor.execute('CREATE TABLE sample_info \
+        (sample_name TEXT, sample_id TEXT, sample_number INTEGER)')
+    cursor.execute('CREATE TABLE mags_per_sample \
+        (sample_name TEXT, mag_name TEXT)')
+    # ========
+
+    # === Extract sample information and save in into DB ===
+    # Rename samples provided to avoid illegal names on files
+    sampleid_to_sample = {}
+    samples_to_db = []
+    sample_number = 1
+    for sample_name in sample_reads:
+        sample_id = "sample_" + str(sample_number)
+        samples_to_db.append((sample_name, sample_id, sample_number))
+        sampleid_to_sample[sample_id] = sample_name
+        sample_number += 1
+    # Enter information into table
+    cursor.execute("begin")
+    cursor.executemany('INSERT INTO sample_info VALUES(?, ?, ?)', samples_to_db)
+    cursor.execute('CREATE UNIQUE INDEX sample_index ON sample_info (sample_name)')
+    cursor.execute("commit")
+    # ========
+
+    # === Extract contig information and MAG correspondence. Save into DB. ===
+    # Get contig sizes
+    contig_sizes = read_contigs(contigs)
+    # Get contig - MAG information
+    contig_mag_corresp = get_mags(mags)
+    # Initialize variables
+    contig_identifiers = []
+    mag_ids = {}
+    mag_id = 0
+    contig_id = 1
+    # The dictionary contig_information is important for speed when filling tables
+    contig_information = {}
+    # Iterate through contig - MAG pairs
+    for contig_name, mag_name in contig_mag_corresp.items():
+        # Store MAG (and contig) names and ids
+        if mag_name in mag_ids:
+            contig_identifiers.append((mag_name, mag_ids[mag_name], contig_name, contig_id))
+            contig_information[contig_name] = [mag_name, mag_ids[mag_name], contig_id]
+            contig_id += 1
+        else:
+            mag_id += 1
+            mag_ids[mag_name] = mag_id
+            contig_identifiers.append((mag_name, mag_ids[mag_name], contig_name, contig_id))
+            contig_information[contig_name] = [mag_name, mag_ids[mag_name], contig_id]
+            contig_id += 1
+    cursor.executemany('INSERT INTO lookup_table VALUES(?, ?, ?, ?)', contig_identifiers)
+    cursor.execute('CREATE INDEX mag_name_index ON lookup_table (mag_name)')
+    conn.commit()
+    # ========
+
+    # === Fill contig length table ===
+    contig_lengths = []
+    for contig, contig_len in contig_sizes.items():
+        # Get mag_id and contig_id
+        sql_command = 'SELECT mag_id, contig_id from lookup_table WHERE contig_name = ?'
+        cursor.execute(sql_command, (contig,))
+        mag_contig_id = cursor.fetchone()
+        contig_lengths.append((mag_contig_id[0], mag_contig_id[1], contig_len))
+    cursor.executemany('INSERT INTO mag_info VALUES(?, ?, ?)', contig_lengths)
+    cursor.execute('CREATE INDEX mag_id_index ON mag_info (mag_id)')
+    conn.commit()
+    # ========
+
+    # === Create one table with information per sample ===
+    for sample_name in sampleid_to_sample.keys():
+        # Drop if they exist
+        cursor.execute('DROP TABLE IF EXISTS ' + sample_name)
+        # Create tables once again
+        cursor.execute('CREATE TABLE ' + sample_name + \
+            ' (mag_id INTEGER, contig_id INTEGER, identity FLOAT, start INTEGER, stop INTEGER)')
+    # === Retrieve information from read mapping and store it ===
+    # Read read mapping file for each sample and fill corresponding table
+    for sample_name, mapping_file in sampleid_to_sample.items():
+        mags_in_sample = []
+        print("Parsing {}... ".format(mapping_file))
+        contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp, cursor, conn)
+        cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
+        all_contigs = cursor.fetchall()
+        for element in all_contigs:
+            if element[0] in contigs_in_sample:
+                if element[1] not in mags_in_sample:
+                    mags_in_sample.append(element[1])
+                else:
+                    continue
+            else:
+                continue
+        mags_in_sample = [(mapping_file, x) for x in mags_in_sample]
+        cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
+        conn.commit()
+        print("Done")
+    conn.commit()
+    conn.close()
+    # ========
+
+
+def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp, cursor, conn):
+    """ This script reads a read mapping file, extracts the contig to which each read maps,
+        the percent id, the start and stop, and stores it in a table per sample.
+    
+    Arguments:
+        mapping_file {str} -- Location of read mapping file.
+        sample_name {str} -- Name of database sample name (form sample_#)
+        map_format {str} -- Format of read mapping results (blast or sam)
+        contig_mag_corresp {dict} -- Dictionary with contigs (keys) and mags (values)
+        cursor {obj} -- Cursor to execute db instructions
+        conn {obj} -- Connection handler to db.
+    """
+    contigs_in_sample = []
+    with open(mapping_file) as input_reads:
+        record_counter = 0
+        records = []
+        if map_format == "blast":
+            for line in input_reads:
+                # Commit changes after 500000 records
+                if record_counter == 500000:
+                    cursor.execute("begin")
+                    cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+                    cursor.execute("commit")
+                    record_counter = 0
+                    records = []
+                if line.startswith("#"):
+                    pass
+                else:
+                    segment = line.split("\t")
+                    contig_ref = segment[1]
+                    # Exclude reads not associated with MAGs of interest
+                    if contig_ref not in contig_mag_corresp:
+                        continue
+                    else:
+                        if contig_ref not in contigs_in_sample:
+                            contigs_in_sample.append(contig_ref)
+                        pct_id = float(segment[2])
+                        pos1 = int(segment[8])
+                        pos2 = int(segment[9])
+                        start = min(pos1, pos2)
+                        end = start+(max(pos1, pos2)-min(pos1, pos2))
+                        mag_id = contig_mag_corresp[contig_ref][1]
+                        contig_id = contig_mag_corresp[contig_ref][2]
+                        records.append((mag_id, contig_id, pct_id, start, end))
+                        record_counter += 1
+            # Commit remaining records
+            if record_counter > 0:
+                cursor.execute("begin")
+                cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+                cursor.execute("commit")
+            # Create index for faster access
+            cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
+        if map_format == "sam":
+            for line in input_reads:
+                if record_counter == 500000:
+                    cursor.execute("begin")
+                    cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+                    cursor.execute("commit")
+                    record_counter = 0
+                    records = []
+                if "MD:Z:" not in line:
+                    continue
+                else :
+                    segment = line.split()
+                    contig_ref = segment[2]
+                    # Exclude reads not associated with MAGs of interest
+                    if contig_ref not in contig_mag_corresp:
+                        continue
+                    else:
+                        if contig_ref not in contigs_in_sample:
+                            contigs_in_sample.append(contig_ref)
+                        # Often the MD:Z: field will be the last one in a magicblast output, but not always.
+                        # Therefore, start from the end and work in.
+                        iter = len(segment)-1
+                        mdz_seg = segment[iter]
+                        # If it's not the correct field, proceed until it is.
+                        while not mdz_seg.startswith("MD:Z:"):
+                            iter -= 1
+                            mdz_seg = segment[iter]
+                        #Remove the MD:Z: flag from the start
+                        mdz_seg = mdz_seg[5:]
+                        match_count = re.findall('[0-9]+', mdz_seg)
+                        sum=0
+                        for num in match_count:
+                            sum+=int(num)
+                        total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+                        pct_id = (sum/(total_count))*100
+                        start = int(segment[3])
+                        end = start+total_count-1
+                        # Get mag_id and contig_id
+                        mag_id = contig_mag_corresp[contig_ref][1]
+                        contig_id = contig_mag_corresp[contig_ref][2]
+                        records.append((mag_id, contig_id, pct_id, start, end))
+                        record_counter += 1
+            # Commit remaining records
+            if record_counter > 0:
+                cursor.execute("begin")
+                cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+                cursor.execute("commit")
+            # Create index for faster access
+            cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
+    conn.commit()
+    return contigs_in_sample
+
+
+def add_sample(database, new_mapping_files, map_format):
+    contig_mag_corresp = {}
+    samples_dict = {}
+    last_sample = 0
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    # Retrieve all sample information
+    sql_command = 'SELECT * from sample_info'
+    cursor.execute(sql_command)
+    sample_information = cursor.fetchall()
+    for sample in sample_information:
+        samples_dict[sample[0]] = sample[1]
+        if sample[2] > last_sample:
+            last_sample = sample[2]
+    # Retrieve contig - mag correspondence
+    sql_command = 'SELECT * from lookup_table'
+    cursor.execute(sql_command)
+    contig_correspondence = cursor.fetchall()
+    for contig_mag in contig_correspondence:
+        contig_mag_corresp[contig_mag[2]] = [contig_mag[0], contig_mag[1], contig_mag[3]]
+    for new_sample in new_mapping_files:
+        # Check if new sample exists
+        mags_in_sample = []
+        if new_sample in samples_dict:
+            print("Dropping {} table and re-building it".format(new_sample))
+            sample_name = samples_dict[new_sample]
+            # If it does, drop the reads that table from that sample and re-build it
+            cursor.execute('DROP TABLE IF EXISTS ' + sample_name)
+            cursor.execute('CREATE TABLE ' + sample_name + \
+                ' (mag_id INTEGER, contig_id INTEGER, identity FLOAT, start INTEGER, stop INTEGER)')
+            cursor.execute('DELETE FROM mags_per_sample WHERE sample_name = ?', (new_sample,))
+            conn.commit()
+            print("Adding {}... ".format(new_sample))
+            contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, contig_mag_corresp, cursor, conn)
+            cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
+            all_contigs = cursor.fetchall()
+            for element in all_contigs:
+                if element[0] in contigs_in_sample:
+                    if element[1] not in mags_in_sample:
+                        mags_in_sample.append(element[1])
+                    else:
+                        continue
+                else:
+                    continue
+            mags_in_sample = [(new_sample, x) for x in mags_in_sample]
+            cursor.execute("begin")
+            cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
+            cursor.execute("commit")
+
+        else:
+            # Otherwise create the new table and add the read information
+            print("Adding {} to existing database {}... ".format(new_sample, database))
+            sample_name = "sample_" + str(last_sample + 1)
+            last_sample += 1
+            cursor.execute('CREATE TABLE ' + sample_name + \
+                ' (mag_id INTEGER, contig_id INTEGER, identity FLOAT, start INTEGER, stop INTEGER)')
+            contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, contig_mag_corresp, cursor, conn)
+            cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
+            all_contigs = cursor.fetchall()
+            for element in all_contigs:
+                if element[0] in contigs_in_sample:
+                    if element[1] not in mags_in_sample:
+                        mags_in_sample.append(element[1])
+                    else:
+                        continue
+                else:
+                    continue
+            mags_in_sample = [(new_sample, x) for x in mags_in_sample]
+            cursor.execute("begin")
+            cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
+            cursor.execute("commit")
+            # Add to sample_info table
+            new_record = (new_sample, sample_name, last_sample)
+            cursor.execute('INSERT INTO sample_info VALUES(?, ?, ?)', new_record)
+            conn.commit()
+        print("Done")
+        conn.commit()
+    conn.close()
+
+
+def read_contigs(contig_file_name):
+    """ Reads a FastA file and returns
+        sequence ids and sizes
+    
+    Arguments:
+        contig_file_name {[str]} -- FastA file location
+    Returns:
+        [dict] -- Dictionary with ids and sizes
+    """
+    print("Reading contigs... ", end="", flush=True)
+    contig_sizes = {}
+    with open(contig_file_name, 'r') as contigs:
+        for identifier, sequence in SimpleFastaParser(contigs):
+            contig_sizes[identifier] = len(sequence)
+    print("done!")
+    return contig_sizes
+
+
+def get_mags(mag_file):
+    """ Reads a file with columns:
+        Contig_name MAG_name
+        and returns the corresponding MAG per contig
+    
+    Arguments:
+        mag_file {[str]} -- MAG correspondence file location
+    Returns:
+        [dict] -- Dictionary with contigs and corresponding MAG
+    """
+    mag_dict = {}
+    with open(mag_file, 'r') as mags:
+        for line in mags:
+            mag_contig = line.split()
+            mag_dict[mag_contig[0]] = mag_contig[1]
+    return mag_dict
+
+
+def prepare_numpy_matrices(database, mag_name, width, bin_height, id_lower):
+    """ Extracts information of a requested mag and builds the empty matrices
+        to be filled in the next step.
+    
+    Arguments:
+        database {str} -- Name of database to use (location).
+        mag_name {str} -- Name of mag of interest.
+        width {int} -- Width of the "bins" to split contigs into.
+        bin_height {list} -- List of identity percentages to include.
+        id_lower {int} -- Minimum identity percentage to consider for reads mapped.
+    
+    Returns:
+        mag_id [int] -- ID of the mag in the database.
+        matrix [dict] -- Dictionary with list of arrays of start and stop positions
+                         and empty matrix to fill.
+        id_breaks [list] -- List of identity percentages to include.
+    """
+    print("Preparing recruitment matrices...", end="", flush=True)
+    # Prep percent identity breaks - always starts at 100 and proceeds 
+    # down by bin_height steps until it cannot do so again without passing id_lower
+    id_breaks = []
+    current_break = 100
+    while current_break > id_lower:
+        id_breaks.append(current_break)
+        current_break -= bin_height
+    id_breaks = np.array(id_breaks[::-1])
+    
+
+    # Retrieve mag_id from provided mag_name
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = 'SELECT mag_id from lookup_table WHERE mag_name = ?'
+    cursor.execute(sql_command, (mag_name,))
+    mag_id = cursor.fetchone()[0]
+    # Retrieve all contigs from mag_name and their sizes
+    sql_command = 'SELECT contig_id, contig_len from mag_info WHERE mag_id = ?'
+    cursor.execute(sql_command, (mag_id,))
+    contig_sizes = cursor.fetchall()
+    # Create matrices for each contig in the mag_name provided
+    matrix = {}
+    for id_len in contig_sizes:
+        contig_length = id_len[1]
+        num_bins = int(contig_length / width)
+        if num_bins < 1:
+            num_bins = 1
+        starts = np.linspace(1, contig_length, num = num_bins, dtype = np.uint64, endpoint = False)
+        ends = np.append(starts[1:]-1, contig_length)
+        numpy_arr = np.zeros((len(id_breaks), len(starts)), dtype = np.uint32)
+        matrix[id_len[0]] = [starts, ends, numpy_arr]
+    print("Done")
+    return mag_id, matrix, id_breaks
+
+
+def numpy_fill(database, mag_id, sample_name, matrices, id_breaks):
+    """[summary]
+    
+    Arguments:
+        database {str} -- Name of database to use (location).
+        mag_id {int} -- ID of mag of interest.
+        sample_name {str} -- Name of sample to retrieve reads from.
+        matrices {dict} -- Empty matrices to fill.
+        id_breaks {list} -- List of identity percentages to include.
+    
+    Returns:
+        matrix [dict] -- Dictionary with list of arrays of start and stop positions
+                         and filled matrix to plot.
+    """
+    print("Filling matrices...")
+    # Retrieve sample_id from sample_name provided
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = 'SELECT sample_id from sample_info WHERE sample_name = ?'
+    cursor.execute(sql_command, (sample_name,))
+    sample_id = cursor.fetchone()[0]
+    # Retrieve all read information from mag_name and sample_name provided
+    sql_command = 'SELECT * from ' + sample_id + ' WHERE mag_id = ?'
+    cursor.execute(sql_command, (mag_id,))
+    read_information = cursor.fetchall()
+    # read_information is (mag_id contig_id perc_id read_start read_stop)
+    for read_mapped in read_information:
+        if read_mapped[1] in matrices:
+            contig_id = read_mapped[1]
+            read_start = read_mapped[3]
+            read_stop = read_mapped[4]
+            read_len = read_stop - read_start + 1
+            read_id_index = bisect.bisect_right(id_breaks, read_mapped[2]) - 1
+            # print(read_mapped)
+            # print(id_breaks)
+            # print(read_id_index, id_breaks[read_id_index])
+            read_start_loc = bisect.bisect_left(matrices[contig_id][1], read_start)
+            read_stop_loc = bisect.bisect_left(matrices[contig_id][1], read_stop)
+            # If the read falls entirely on a bin add all bases to the bin
+            if read_start_loc == read_stop_loc:
+                matrices[contig_id][2][read_id_index][read_start_loc] += read_len
+            # On the contrary split bases between two or more bins
+            else:
+                for j in range(read_start_loc, read_stop_loc + 1):
+                    overflow = read_stop - matrices[contig_id][1][j]
+                    if overflow > 0:
+                        matrices[contig_id][2][read_id_index][j] += (read_len - overflow)
+                        read_len = overflow
+                    else :
+                        matrices[contig_id][2][read_id_index][j] += read_len
+    print("Done")
+    return matrices
 
 #reads a fasta file, gets the lengths of each sequence, and returns a dictionary each with a single sequence name, 
 #its appropriate starts and ends, and a vector of counts to fill with read data, 1 slot per %ID break
@@ -103,7 +560,9 @@ def prepare_matrices(contig_file_name, width, bin_height, id_lower):
 
         
     return(matrices, id_breaks)
-    
+
+
+
 #This function is designed to take sam-format lines piped from a samtools view command 
 #and fill a recruitment matrix with them, terminating further processing there.		
 def receive_sam(matrix, breaks, export, reads):
@@ -399,168 +858,6 @@ def receive_sam_anir(matrix, breaks, export):
                         
     return(matrix, ANIr_collections)
 
-
-#! DATABASE CREATION
-def blast_like_to_db(contigs, mags, sample_reads, format, database):
-    # Get contig sizes
-    contig_sizes = read_contigs(contigs)
-    
-    # Get contig - MAG information
-    contig_mag_corresp = get_mags(mags)
-
-    # Get number of samples and rename them
-    # This is mainly to create one table per sample and avoid illegal names on files
-    sample_names = {}
-    sample_number = 1
-    for sample in sample_reads:
-        name = "sample_" + str(sample_number)
-        sample_names[name] = sample
-        sample_number += 1
-
-    # ===== Database and table creation =====
-    # Create or open database
-    print("Creating databases")
-    conn = sqlite3.connect(database)
-    cursor = conn.cursor()
-    # Create lookup table (always creates a new one)
-    cursor.execute('DROP TABLE IF EXISTS lookup_table')
-    cursor.execute('CREATE TABLE lookup_table \
-        (mag_name TEXT, mag_id INTEGER, contig_name TEXT, contig_id INTEGER)')
-    # Create mag_info and gene_info tables
-    cursor.execute('DROP TABLE IF EXISTS mag_info')
-    cursor.execute('DROP TABLE IF EXISTS gene_info')
-    cursor.execute('CREATE TABLE mag_info (mag_id INTEGER, contig_id INTEGER, len_contig INTEGER)')
-    cursor.execute('CREATE TABLE gene_info (mag_id INTEGER, contig_id INTEGER, gene TEXT, gene_start INTEGER, gene_stop INTEGER)')
-    # Create one table with information per sample
-    for sample_name in sample_names.keys():
-        # Drop if they exist
-        cursor.execute('DROP TABLE IF EXISTS ' + sample_name)
-        # Create tables once again
-        cursor.execute('CREATE TABLE ' + sample_name + \
-            ' (mag_id INTEGER, contig_id INTEGER, identity FLOAT, start INTEGER, stop INTEGER)')
-    # ============
-
-    # Fill lookup table
-    contig_identifiers = []
-    contig_information = {}
-    mag_ids = {}
-    mag_id = 0
-    contig_id = 1
-    for contig_name, mag_name in contig_mag_corresp.items():
-        if mag_name in mag_ids:
-            contig_identifiers.append((mag_name, mag_ids[mag_name], contig_name, contig_id))
-            contig_information[contig_name] = [contig_id, mag_name, mag_ids[mag_name]]
-            contig_id += 1
-        else:
-            mag_id += 1
-            mag_ids[mag_name] = mag_id
-            contig_identifiers.append((mag_name, mag_ids[mag_name], contig_name, contig_id))
-            contig_information[contig_name] = [contig_id, mag_name, mag_ids[mag_name]]
-            contig_id += 1
-    cursor.executemany('INSERT INTO lookup_table VALUES(?, ?, ?, ?)', contig_identifiers)
-    cursor.execute('CREATE UNIQUE INDEX contig_index ON lookup_table (contig_id)')
-    conn.commit()
-
-    # Fill contig length table
-    contig_lengths = []
-    for contig, contig_len in contig_sizes.items():
-        # Get mag_id and contig_id
-        sql_command = 'SELECT mag_id, contig_id from lookup_table WHERE contig_name = ?'
-        cursor.execute(sql_command, (contig,))
-        mag_contig_id = cursor.fetchone()
-        contig_lengths.append((mag_contig_id[0], mag_contig_id[1], contig_len))
-    cursor.executemany('INSERT INTO mag_info VALUES(?, ?, ?)', contig_lengths)
-    conn.commit()
-
-    # Read read mapping file for each sample and fill corresponding table
-    for sample_name, mapping_file in sample_names.items():
-        with open(mapping_file) as input_reads:
-            record_counter = 0
-            records = []
-            if format == "blast":
-                for line in input_reads:
-                    # Commit changes after 500000 records
-                    if record_counter == 500000:
-                        cursor.execute("begin")
-                        cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
-                        cursor.execute("commit")
-                        record_counter = 0
-                        records = []
-                    if line.startswith("#"):
-                        pass
-                    else:
-                        segment = line.split("\t")
-                        contig_ref = segment[1]
-                        if contig_ref not in contig_mag_corresp:
-                            continue
-                        else:
-                            pct_id = float(segment[2])
-                            pos1 = int(segment[8])
-                            pos2 = int(segment[9])
-                            start = min(pos1, pos2)
-                            end = start+(max(pos1, pos2)-min(pos1, pos2))
-                            mag_id = contig_information[contig_ref][2]
-                            contig_id = contig_information[contig_ref][0]
-                            records.append((mag_id, contig_id, pct_id, start, end))
-                            record_counter += 1
-                # Commit remaining records
-                if record_counter > 0:
-                    cursor.execute("begin")
-                    cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
-                    cursor.execute("commit")
-                # Create index for faster access
-                cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-                print("Done")
-            if format == "sam":
-                for line in input_reads:
-                    if record_counter == 500000:
-                        cursor.execute("begin")
-                        cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
-                        cursor.execute("commit")
-                        record_counter = 0
-                        records = []
-                    if "MD:Z:" not in line:
-                        continue
-                    else :
-                        segment = line.split()
-                        contig_ref = segment[2]
-                        if contig_ref not in contig_mag_corresp:
-                            continue
-                        else:
-                            # Often the MD:Z: field will be the last one in a magicblast output, but not always.
-                            # Therefore, start from the end and work in.
-                            iter = len(segment)-1
-                            mdz_seg = segment[iter]
-                            # If it's not the correct field, proceed until it is.
-                            while not mdz_seg.startswith("MD:Z:"):
-                                iter -= 1
-                                mdz_seg = segment[iter]
-                            #Remove the MD:Z: flag from the start
-                            mdz_seg = mdz_seg[5:]
-                            match_count = re.findall('[0-9]+', mdz_seg)
-                            sum=0
-                            for num in match_count:
-                                sum+=int(num)
-                            total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
-                            pct_id = (sum/(total_count))*100
-                            start = int(segment[3])
-                            end = start+total_count-1
-                            # Get mag_id and contig_id
-                            mag_id = contig_information[contig_ref][2]
-                            contig_id = contig_information[contig_ref][0]
-                            records.append((mag_id, contig_id, pct_id, start, end))
-                            record_counter += 1
-                # Commit remaining records
-                if record_counter > 0:
-                    cursor.execute("begin")
-                    cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
-                    cursor.execute("commit")
-                # Create index for faster access
-                cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-                print("Done")
-    conn.commit()
-    conn.close()
-
 def receive_blast_like(matrix, breaks, export, reads):
     if reads == "":
         for line in sys.stdin:
@@ -723,41 +1020,6 @@ def receive_blast_like_anir(matrix, breaks):
                         
     return(matrix, ANIr_collections)		
     
-#Contig in first column, mags in second
-def get_mags(mag_file):
-    mag_dict = {}
-    
-    mags = open(mag_file, "r")
-    
-    for line in mags:
-        mag_contig = line.split()
-        mag_dict[mag_contig[0]] = mag_contig[1]
-
-    mags.close()
-    
-    return(mag_dict)
-
-def read_contigs(contig_file_name):
-    print("Reading contigs... ", end="", flush=True)
-    
-    current_contig = ""
-    output = {}
-    
-    fh = open(contig_file_name)
-    
-    for line in fh:
-        if line[0] == ">":
-            current_contig = line[1:].strip()
-            output[current_contig] = 0
-        else :
-            output[current_contig] += len(line.strip())
-    
-    fh.close()
-        
-    print("done!")
-    
-    return(output)
-
 def blast_rec_file(reads, MAGS, prefix):
     print("Reading BLAST reads... ", end="", flush=True)	
     
@@ -953,9 +1215,7 @@ def main():
    
     contigs = args.contigs
     reads = args.reads
-    print(reads)
     mags = args.mags
-    #! I changed format by map_format because format is a reserved word in python
     map_format = args.map_format
     # genes = args.genes
     step = float(args.id_step)
@@ -966,81 +1226,91 @@ def main():
     interact = args.lim_rec
     sql_database = args.sql_database
     
-    blast_like_to_db(contigs, mags, reads, map_format, sql_database)
+    # Create databases
+    sqldb_creation(contigs, mags, reads, map_format, sql_database)
+
+    # Prepare user requested information
+    mag_id, matrix, id_breaks = prepare_numpy_matrices("TEST_DB", "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
+    matrix = numpy_fill(sql_database, mag_id, "03.All_SAR11--ETNP_2013_S02_SV89_300m.blast.bh", matrix, id_breaks)
+
+    # Add new sample to database
+    add_sample(sql_database, ["03.First_Mapping.blast.bh", "TEST"], map_format)
+
+
     mags = {}
     
-    if interact :
+    # if interact :
     
-        c_len = read_contigs(contigs)
+    #     c_len = read_contigs(contigs)
     
-        if MAGs == "":
-            for key in c_len:
-                mags[key] = key
+    #     if MAGs == "":
+    #         for key in c_len:
+    #             mags[key] = key
         
-            print_lim(c_len, mags, prefix)
+    #         print_lim(c_len, mags, prefix)
             
-            if format == "blast":
-                blast_rec_file(reads, mags, prefix)
-            else:
-                sam_rec_file(reads, mags, prefix)
+    #         if format == "blast":
+    #             blast_rec_file(reads, mags, prefix)
+    #         else:
+    #             sam_rec_file(reads, mags, prefix)
             
-        else:
-            mags = get_mags(MAGs)
+    #     else:
+    #         mags = get_mags(MAGs)
             
-            removed_contigs = []
+    #         removed_contigs = []
             
-            for key in c_len:
-                if key not in mags:
-                    removed_contigs.append(key)
+    #         for key in c_len:
+    #             if key not in mags:
+    #                 removed_contigs.append(key)
                     
-            for c in removed_contigs:
-                del c_len[c]
+    #         for c in removed_contigs:
+    #             del c_len[c]
                 
-            print_lim(c_len, mags, prefix)	
+    #         print_lim(c_len, mags, prefix)	
             
-            if format == "blast":
-                blast_rec_file(reads, mags, prefix)
-            else:
-                sam_rec_file(reads, mags, prefix)
+    #         if format == "blast":
+    #             blast_rec_file(reads, mags, prefix)
+    #         else:
+    #             sam_rec_file(reads, mags, prefix)
             
-    else:
+    # else:
     
-        mat, breaks = prepare_matrices(contigs, width, step, 70)
+    #     mat, breaks = prepare_matrices(contigs, width, step, 70)
     
-        if MAGs == "":
-            #If MAGs aren't supplied, add a column specifying this
-            for key in mat:
-                mags[key] = key
+    #     if MAGs == "":
+    #         #If MAGs aren't supplied, add a column specifying this
+    #         for key in mat:
+    #             mags[key] = key
             
-            if format == "blast":
+    #         if format == "blast":
                 
-                mat = receive_blast_like(mat, breaks, export_lines, reads)
-                print_super_rec(mat, breaks, step, prefix, mags)
+    #             mat = receive_blast_like(mat, breaks, export_lines, reads)
+    #             print_super_rec(mat, breaks, step, prefix, mags)
                 
-            else:
+    #         else:
             
-                mat = receive_sam(mat, breaks, export_lines, reads)
-                print_super_rec(mat, breaks, step, prefix, mags)
+    #             mat = receive_sam(mat, breaks, export_lines, reads)
+    #             print_super_rec(mat, breaks, step, prefix, mags)
             
-        else: 	
-            mags = get_mags(MAGs)
+    #     else: 	
+    #         mags = get_mags(MAGs)
             
-            removed_contigs = []
+    #         removed_contigs = []
             
-            for key in mat:
-                if key not in mags:
-                    removed_contigs.append(key)
+    #         for key in mat:
+    #             if key not in mags:
+    #                 removed_contigs.append(key)
                     
-            for c in removed_contigs:
-                del mat[c]
+    #         for c in removed_contigs:
+    #             del mat[c]
                 
-            if format == "blast":
-                mat = receive_blast_like(mat, breaks, export_lines, reads)
-                print_super_rec(mat, breaks, step, prefix, mags)
+    #         if format == "blast":
+    #             mat = receive_blast_like(mat, breaks, export_lines, reads)
+    #             print_super_rec(mat, breaks, step, prefix, mags)
                     
-            else:
-                mat = receive_sam(mat, breaks, export_lines, reads)
-                print_super_rec(mat, breaks, step, prefix, mags)
+    #         else:
+    #             mat = receive_sam(mat, breaks, export_lines, reads)
+    #             print_super_rec(mat, breaks, step, prefix, mags)
 
 #Just runs main.
 if __name__ == "__main__":main()
