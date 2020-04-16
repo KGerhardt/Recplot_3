@@ -64,12 +64,12 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
 
     # === Extract contig information and MAG correspondence. Save into DB. ===
     
-	# Get contig sizes
+    # Get contig sizes
     contig_sizes = read_contigs(contigs)
-	
+    
     # Get contig - MAG information
     contig_mag_corresp = get_mags(mags)
-	
+    
     # Initialize variables
     contig_identifiers = []
     mag_ids = {}
@@ -101,10 +101,10 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         # Get mag_id and contig_id
         sql_command = 'SELECT mag_id, contig_id from lookup_table WHERE contig_name = ?'
         cursor.execute(sql_command, (contig,))
-        mag_contig_id = cursor.fetchone()		
+        mag_contig_id = cursor.fetchone()        
         contig_lengths.append((mag_contig_id[0], mag_contig_id[1], contig_len))
-	
-	
+    
+    
     cursor.executemany('INSERT INTO mag_info VALUES(?, ?, ?)', contig_lengths)
     cursor.execute('CREATE INDEX mag_id_index ON mag_info (mag_id)')
     conn.commit()
@@ -153,54 +153,56 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
         cursor {obj} -- Cursor to execute db instructions
         conn {obj} -- Connection handler to db.
     """
-	assert (map_format == "sam" or map_format == "bam" or map_format == "blast"), "Mapping format not recognized. Must be one of 'sam' 'bam' or 'blast'"
+    assert (map_format == "sam" or map_format == "bam" or map_format == "blast"), "Mapping format not recognized. Must be one of 'sam' 'bam' or 'blast'"
+    
+    contigs_in_sample = []
 	
-	if map_format == "blast":
-		print("Parsing tabular BLAST format reads... ")
-		with open(mapping_file) as input_reads:
+    if map_format == "blast":
+        print("Parsing tabular BLAST format reads... ")
+        with open(mapping_file) as input_reads:
+            record_counter = 0
+            records = []
+            for line in input_reads:
+                # Commit changes after 500000 records
+                if record_counter == 500000:
+                    cursor.execute("begin")
+                    cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+                    cursor.execute("commit")
+                    record_counter = 0
+                    records = []
+                if line.startswith("#"):
+                    pass
+                else:
+                    segment = line.split("\t")
+                    contig_ref = segment[1]
+                    # Exclude reads not associated with MAGs of interest
+                    if contig_ref not in contig_mag_corresp:
+                        continue
+                    else:
+                        if contig_ref not in contigs_in_sample:
+                            contigs_in_sample.append(contig_ref)
+                        pct_id = float(segment[2])
+                        pos1 = int(segment[8])
+                        pos2 = int(segment[9])
+                        start = min(pos1, pos2)
+                        end = start+(max(pos1, pos2)-min(pos1, pos2))
+                        mag_id = contig_mag_corresp[contig_ref][1]
+                        contig_id = contig_mag_corresp[contig_ref][2]
+                        records.append((mag_id, contig_id, pct_id, start, end))
+                        record_counter += 1
+            # Commit remaining records
+            if record_counter > 0:
+                cursor.execute("begin")
+                cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+                cursor.execute("commit")
+            # Create index for faster access
+            cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
+            
+    if map_format == "sam":
+        print("Parsing SAM format reads... ")
         record_counter = 0
         records = []
-			for line in input_reads:
-				# Commit changes after 500000 records
-				if record_counter == 500000:
-					cursor.execute("begin")
-					cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
-					cursor.execute("commit")
-					record_counter = 0
-					records = []
-				if line.startswith("#"):
-					pass
-				else:
-					segment = line.split("\t")
-					contig_ref = segment[1]
-					# Exclude reads not associated with MAGs of interest
-					if contig_ref not in contig_mag_corresp:
-						continue
-					else:
-						if contig_ref not in contigs_in_sample:
-							contigs_in_sample.append(contig_ref)
-						pct_id = float(segment[2])
-						pos1 = int(segment[8])
-						pos2 = int(segment[9])
-						start = min(pos1, pos2)
-						end = start+(max(pos1, pos2)-min(pos1, pos2))
-						mag_id = contig_mag_corresp[contig_ref][1]
-						contig_id = contig_mag_corresp[contig_ref][2]
-						records.append((mag_id, contig_id, pct_id, start, end))
-						record_counter += 1
-			# Commit remaining records
-			if record_counter > 0:
-				cursor.execute("begin")
-				cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
-				cursor.execute("commit")
-			# Create index for faster access
-			cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-			
-	if map_format == "sam"
-		print("Parsing SAM format reads... ")
-		record_counter = 0
-        records = []
-		with open(mapping_file) as input_reads:
+        with open(mapping_file) as input_reads:
             for line in input_reads:
                 if record_counter == 500000:
                     cursor.execute("begin")
@@ -249,12 +251,14 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                 cursor.execute("commit")
             # Create index for faster access
             cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-	if(map_format == "bam"):
-		print("Parsing BAM format reads... ")
-		record_counter = 0
+	
+    if map_format == "bam":
+        print("Parsing BAM format reads... ")
+        record_counter = 0
         records = []
-		input_reads = pysam.AlignmentFile(mapping_file, "rb")
-		for line in input_reads:
+        input_reads = pysam.AlignmentFile(mapping_file, "rb")
+        for entry in input_reads:
+            line = entry.to_string()
             if record_counter == 500000:
                 cursor.execute("begin")
                 cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
@@ -265,23 +269,19 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                 continue
             else :
                 segment = line.split()
+				
                 contig_ref = segment[2]
+				
+                print(contig_ref)
+								
                 # Exclude reads not associated with MAGs of interest
                 if contig_ref not in contig_mag_corresp:
                     continue
                 else:
                     if contig_ref not in contigs_in_sample:
                         contigs_in_sample.append(contig_ref)
-                    # Often the MD:Z: field will be the last one in a magicblast output, but not always.
-                    # Therefore, start from the end and work in.
-                    iter = len(segment)-1
-                    mdz_seg = segment[iter]
-                    # If it's not the correct field, proceed until it is.
-                    while not mdz_seg.startswith("MD:Z:"):
-                        iter -= 1
-                        mdz_seg = segment[iter]
-                    #Remove the MD:Z: flag from the start
-                    mdz_seg = mdz_seg[5:]
+                    
+                    mdz_seg = entry.get_tag("MD")
                     match_count = re.findall('[0-9]+', mdz_seg)
                     sum=0
                     for num in match_count:
@@ -293,7 +293,13 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                     # Get mag_id and contig_id
                     mag_id = contig_mag_corresp[contig_ref][1]
                     contig_id = contig_mag_corresp[contig_ref][2]
+					
+                    #print(mag_id, contig_id)
+					
                     records.append((mag_id, contig_id, pct_id, start, end))
+					
+                    #print(*records)
+					
                     record_counter += 1
         # Commit remaining records
         if record_counter > 0:
@@ -302,11 +308,9 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
             cursor.execute("commit")
         # Create index for faster access
         cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-		
-		reader.close()
-
-    conn.commit()
 	
+    conn.commit()
+    
     return contigs_in_sample
 
 
@@ -400,35 +404,35 @@ def read_contigs(contig_file_name):
         [dict] -- Dictionary with ids and sizes
     """
     print("Reading contigs... ", end="", flush=True)
-	
+    
     contig_sizes = {}
     contig_length = 0
     contigs =  open(contig_file_name, 'r')
-	
-	#The ensuing loop commits a contig to the contig lengths dict every time a new contig is observed, i.e. whenever a current sequence has terminated.
-	#This works both for single and splitline multi fastas.
-	
-	#The first line is manually read in so that its count can be gathered before it is committed - this basically skips the first iteration of the loop.
+    
+    #The ensuing loop commits a contig to the contig lengths dict every time a new contig is observed, i.e. whenever a current sequence has terminated.
+    #This works both for single and splitline multi fastas.
+    
+    #The first line is manually read in so that its count can be gathered before it is committed - this basically skips the first iteration of the loop.
     current_contig = contigs.readline()[1:].strip().split()[0]
-	
+    
     for line in contigs:
         if line[0] == ">":
-		    #Add the contig that had 
+            #Add the contig that had 
             contig_sizes[current_contig] = contig_length
-			
+            
             #set to new contig. One final loop of starts ends counts is needed
             current_contig = line[1:].strip().split()[0]
             contig_length = 0
         else :
             contig_length += len(line.strip())
-	
+    
     contigs.close()
-	
-	#The loop never gets to commit on the final iteration, so this statement adds the last contig.
+    
+    #The loop never gets to commit on the final iteration, so this statement adds the last contig.
     contig_sizes[current_contig] = contig_length
-	
+    
     print("done!")
-	
+    
     return contig_sizes
 
 
@@ -529,8 +533,8 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     # Retrieve all read information from mag_name and sample_name provided
     sql_command = 'SELECT * from ' + sample_id + ' WHERE mag_id = ?'
     cursor.execute(sql_command, (mag_id,))
-	
-	#TODO: We shouldn't need to fetch all reads. We can iterate on the cursor without doing this.
+    
+    #TODO: We shouldn't need to fetch all reads. We can iterate on the cursor without doing this.
     #read_information = cursor.fetchall()
     #read_information is (mag_id contig_id perc_id read_start read_stop)
     #for read_mapped in read_information:
@@ -573,7 +577,7 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
         id_breaks.append(current_break)
         current_break -= bin_height
     id_breaks = np.array(id_breaks[::-1])
-	
+    
     zeroes = []
     for i in id_breaks:
         zeroes.append(0)
@@ -592,15 +596,15 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
     matrix = {}
     #begin reading contigs and determining their lengths.
     
-	#id_len is a list of contig name, contig_length
+    #id_len is a list of contig name, contig_length
     for id_len in contig_sizes:
         
         starts = []
         ends = []
         pct_id_counts = []
-		
+        
         contig_length = id_len[1]
-		
+        
         num_bins = int(contig_length / width)
         if num_bins < 1:
             num_bins = 1
@@ -608,13 +612,13 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
         bin_width = (contig_length / num_bins)-1
 
         cur_bin_start = 1
-		
+        
         for i in range(1, num_bins):
             starts.append(int(cur_bin_start))
             ends.append(int((cur_bin_start+bin_width)))
             pct_id_counts.append(zeroes[:])
             cur_bin_start+=bin_width+1
-		
+        
         matrix[id_len[0]] = [starts, ends, numpy_arr]
 
         
@@ -631,7 +635,7 @@ def main():
 
     parser.add_argument("-c", "--contigs", dest="contigs", 
     help = "This should be a FASTA file containing all and only the contigs that you would like to be part of your recruitment plot.")
-    parser.add_argument("-m", "--mags", dest="mags", default="", help = "A tab separated file containing the names of MAGs in the first column and contigs in the second column. Every contig should have its parent MAG listed in this file.")	
+    parser.add_argument("-m", "--mags", dest="mags", default="", help = "A tab separated file containing the names of MAGs in the first column and contigs in the second column. Every contig should have its parent MAG listed in this file.")    
     parser.add_argument("-r", "--reads", dest="reads", nargs='+', help = "This should be a file with reads aligned to your contigs in any of the following formats: tabular BLAST(outfmt 6), SAM, or Magic-BLAST")
     parser.add_argument("-f", "--format", dest="map_format", default="blast", help="The format of the reads file (write 'blast' or 'sam'). Defaults to tabular BLAST.")
     #parser.add_argument("-g", "--genes", dest="genes", default = "", help = "Optional GFF3 file containing gene starts and stops to be use in the recruitment plot.")
