@@ -22,7 +22,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     
     # ===== Database and table creation =====
     # Create or open database
-    print("Creating databases...")
+    print("Creating database...")
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
     # Create lookup table (always creates a new one)
@@ -62,10 +62,13 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # ========
 
     # === Extract contig information and MAG correspondence. Save into DB. ===
-    # Get contig sizes
+    
+	# Get contig sizes
     contig_sizes = read_contigs(contigs)
+	
     # Get contig - MAG information
     contig_mag_corresp = get_mags(mags)
+	
     # Initialize variables
     contig_identifiers = []
     mag_ids = {}
@@ -97,8 +100,10 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         # Get mag_id and contig_id
         sql_command = 'SELECT mag_id, contig_id from lookup_table WHERE contig_name = ?'
         cursor.execute(sql_command, (contig,))
-        mag_contig_id = cursor.fetchone()
+        mag_contig_id = cursor.fetchone()		
         contig_lengths.append((mag_contig_id[0], mag_contig_id[1], contig_len))
+	
+	
     cursor.executemany('INSERT INTO mag_info VALUES(?, ?, ?)', contig_lengths)
     cursor.execute('CREATE INDEX mag_id_index ON mag_info (mag_id)')
     conn.commit()
@@ -344,7 +349,7 @@ def read_contigs(contig_file_name):
     for line in contigs:
         if line[0] == ">":
 		    #Add the contig that had 
-            contig_sizes[current_contig] = [contig_length]
+            contig_sizes[current_contig] = contig_length
 			
             #set to new contig. One final loop of starts ends counts is needed
             current_contig = line[1:].strip().split()[0]
