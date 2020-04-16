@@ -256,23 +256,32 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
         print("Parsing BAM format reads... ")
         record_counter = 0
         records = []
+		
+        #This reader has some odd properties - most of it exists as a C interface
+        #As a result, the entries are NOT the individual lines of the file and cannot be accessed as such
+        #Instead, the iterator 'entry' returns a pointer to a location in memory based on the file
+        #This iterator has a set of builtin functions that are called to access pos, ref name, MD:Z:
         input_reads = pysam.AlignmentFile(mapping_file, "rb")
         for entry in input_reads:
-            line = entry.to_string()
+            #This line could allow processing to work like in SAM fmt, but is slower.
+            #line = entry.to_string()
             if record_counter == 500000:
                 cursor.execute("begin")
                 cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
                 cursor.execute("commit")
                 record_counter = 0
                 records = []
-            if "MD:Z:" not in line:
+			#has_tag returns true if the entry has a %ID relevant field
+            if not entry.has_tag("MD"):
                 continue
             else :
-                segment = line.split()
+				#No longer needed because of pysam accesses
+                #segment = line.split()
 				
-                contig_ref = segment[2]
+				#The individual read has a reference ID, and the file has a list of names via IDs.
+				#The entry.ref_ID gets the ID number, and the .get_ref returns the actual name from the number
+                contig_ref = input_reads.get_reference_name(entry.reference_id)
 				
-                print(contig_ref)
 								
                 # Exclude reads not associated with MAGs of interest
                 if contig_ref not in contig_mag_corresp:
@@ -281,6 +290,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                     if contig_ref not in contigs_in_sample:
                         contigs_in_sample.append(contig_ref)
                     
+					#Returns the MD:Z: segment
                     mdz_seg = entry.get_tag("MD")
                     match_count = re.findall('[0-9]+', mdz_seg)
                     sum=0
@@ -288,7 +298,12 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                         sum+=int(num)
                     total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
                     pct_id = (sum/(total_count))*100
-                    start = int(segment[3])
+					
+					
+					#BAM files, unlike SAM files, are zero indexed. This +1 adjustment ensures SAM/BAM/R consistency
+                    start = entry.reference_start+1
+					
+					
                     end = start+total_count-1
                     # Get mag_id and contig_id
                     mag_id = contig_mag_corresp[contig_ref][1]
