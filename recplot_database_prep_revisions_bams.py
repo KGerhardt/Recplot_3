@@ -7,7 +7,7 @@ import sqlite3
 import argparse
 from sys import argv
 import numpy as np
-import pysam
+# import pysam
 
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
@@ -122,7 +122,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     for sample_name, mapping_file in sampleid_to_sample.items():
         mags_in_sample = []
         print("Parsing {}... ".format(mapping_file))
-        contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp, cursor, conn)
+        contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn)
         cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
         all_contigs = cursor.fetchall()
         for element in all_contigs:
@@ -141,7 +141,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     conn.close()
     # ========
 
-def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp, cursor, conn):
+def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     """ This script reads a read mapping file, extracts the contig to which each read maps,
         the percent id, the start and stop, and stores it in a table per sample.
     
@@ -149,14 +149,20 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
         mapping_file {str} -- Location of read mapping file.
         sample_name {str} -- Name of database sample name (form sample_#)
         map_format {str} -- Format of read mapping results (blast or sam)
-        contig_mag_corresp {dict} -- Dictionary with contigs (keys) and mags (values)
         cursor {obj} -- Cursor to execute db instructions
         conn {obj} -- Connection handler to db.
     """
     assert (map_format == "sam" or map_format == "bam" or map_format == "blast"), "Mapping format not recognized. Must be one of 'sam' 'bam' or 'blast'"
-    
+    contig_mag_corresp = {}
     contigs_in_sample = []
-	
+    # Retrieve mag information as mag_name, mag_id, contig_name, contig_id
+    sql_command = 'SELECT * from lookup_table'
+    cursor.execute(sql_command)
+    contig_correspondence = cursor.fetchall()
+    for contig_mag in contig_correspondence:
+        contig_mag_corresp[contig_mag[2]] = [contig_mag[0], contig_mag[1], contig_mag[3]]
+    
+    # Read mapping files and fill sample tables
     if map_format == "blast":
         print("Parsing tabular BLAST format reads... ")
         with open(mapping_file) as input_reads:
@@ -251,12 +257,12 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                 cursor.execute("commit")
             # Create index for faster access
             cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-	
+    
     if map_format == "bam":
         print("Parsing BAM format reads... ")
         record_counter = 0
         records = []
-		
+        
         #This reader has some odd properties - most of it exists as a C interface
         #As a result, the entries are NOT the individual lines of the file and cannot be accessed as such
         #Instead, the iterator 'entry' returns a pointer to a location in memory based on the file
@@ -271,18 +277,18 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                 cursor.execute("commit")
                 record_counter = 0
                 records = []
-			#has_tag returns true if the entry has a %ID relevant field
+            #has_tag returns true if the entry has a %ID relevant field
             if not entry.has_tag("MD"):
                 continue
             else :
-				#No longer needed because of pysam accesses
+                #No longer needed because of pysam accesses
                 #segment = line.split()
-				
-				#The individual read has a reference ID, and the file has a list of names via IDs.
-				#The entry.ref_ID gets the ID number, and the .get_ref returns the actual name from the number
+                
+                #The individual read has a reference ID, and the file has a list of names via IDs.
+                #The entry.ref_ID gets the ID number, and the .get_ref returns the actual name from the number
                 contig_ref = input_reads.get_reference_name(entry.reference_id)
-				
-								
+                
+                                
                 # Exclude reads not associated with MAGs of interest
                 if contig_ref not in contig_mag_corresp:
                     continue
@@ -290,7 +296,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                     if contig_ref not in contigs_in_sample:
                         contigs_in_sample.append(contig_ref)
                     
-					#Returns the MD:Z: segment
+                    #Returns the MD:Z: segment
                     mdz_seg = entry.get_tag("MD")
                     match_count = re.findall('[0-9]+', mdz_seg)
                     sum=0
@@ -298,23 +304,23 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
                         sum+=int(num)
                     total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
                     pct_id = (sum/(total_count))*100
-					
-					
-					#BAM files, unlike SAM files, are zero indexed. This +1 adjustment ensures SAM/BAM/R consistency
+                    
+                    
+                    #BAM files, unlike SAM files, are zero indexed. This +1 adjustment ensures SAM/BAM/R consistency
                     start = entry.reference_start+1
-					
-					
+                    
+                    
                     end = start+total_count-1
                     # Get mag_id and contig_id
                     mag_id = contig_mag_corresp[contig_ref][1]
                     contig_id = contig_mag_corresp[contig_ref][2]
-					
+                    
                     #print(mag_id, contig_id)
-					
+                    
                     records.append((mag_id, contig_id, pct_id, start, end))
-					
+                    
                     #print(*records)
-					
+                    
                     record_counter += 1
         # Commit remaining records
         if record_counter > 0:
@@ -323,7 +329,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, contig_mag_corresp,
             cursor.execute("commit")
         # Create index for faster access
         cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-	
+    
     conn.commit()
     
     return contigs_in_sample
@@ -362,7 +368,7 @@ def add_sample(database, new_mapping_files, map_format):
             cursor.execute('DELETE FROM mags_per_sample WHERE sample_name = ?', (new_sample,))
             conn.commit()
             print("Adding {}... ".format(new_sample))
-            contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, contig_mag_corresp, cursor, conn)
+            contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, cursor, conn)
             cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
             all_contigs = cursor.fetchall()
             for element in all_contigs:
@@ -385,7 +391,7 @@ def add_sample(database, new_mapping_files, map_format):
             last_sample += 1
             cursor.execute('CREATE TABLE ' + sample_name + \
                 ' (mag_id INTEGER, contig_id INTEGER, identity FLOAT, start INTEGER, stop INTEGER)')
-            contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, contig_mag_corresp, cursor, conn)
+            contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, cursor, conn)
             cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
             all_contigs = cursor.fetchall()
             for element in all_contigs:
@@ -593,14 +599,16 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
         current_break -= bin_height
     id_breaks = np.array(id_breaks[::-1])
     
-    zeroes = []
-    for i in id_breaks:
-        zeroes.append(0)
+    #TODO: Is better to do it this way
+    zeroes = [0] * len(id_breaks)
+    # zeroes = []
+    # for i in id_breaks:
+    #     zeroes.append(0)
     
     # Retrieve mag_id from provided mag_name
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
-    sql_command = 'SELECT mag_id from lookup_table WHERE mag_name = ?'
+    sql_command = 'SELECT mag_id FROM lookup_table WHERE mag_name = ?'
     cursor.execute(sql_command, (mag_name,))
     mag_id = cursor.fetchone()[0]
     # Retrieve all contigs from mag_name and their sizes
@@ -682,11 +690,12 @@ def main():
     sqldb_creation(contigs, mags, reads, map_format, sql_database)
 
     # Prepare user requested information
-    mag_id, matrix, id_breaks = prepare_matrices("TEST_DB", "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
+    mag_id, matrix, id_breaks = prepare_matrices(sql_database, "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
     matrix = fill_matrices(sql_database, mag_id, "03.All_SAR11--ETNP_2013_S02_SV89_300m.blast.bh", matrix, id_breaks)
+    print(matrix)
 
     # Add new sample to database
-    add_sample(sql_database, ["03.First_Mapping.blast.bh", "TEST"], map_format)
+    # add_sample(sql_database, ["03.First_Mapping.blast.bh", "TEST"], map_format)
 
 
     mags = {}
@@ -694,5 +703,5 @@ def main():
    
 
 #Just runs main.
-#if __name__ == "__main__":main()
+if __name__ == "__main__":main()
 
