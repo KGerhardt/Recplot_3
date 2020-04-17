@@ -7,7 +7,7 @@ import sqlite3
 import argparse
 from sys import argv
 import numpy as np
-# import pysam
+import pysam
 
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
@@ -560,6 +560,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     #read_information is (mag_id contig_id perc_id read_start read_stop)
     #for read_mapped in read_information:
     for read_mapped in cursor:
+        #print(*read_mapped)
         if read_mapped[1] in matrices:
             contig_id = read_mapped[1]
             read_start = read_mapped[3]
@@ -641,6 +642,8 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
             cur_bin_start+=bin_width+1
         
         matrix[id_len[0]] = [starts, ends, pct_id_counts]
+		
+    print("done!")
 
     return(mag_id, matrix, id_breaks)
 
@@ -700,5 +703,5 @@ def main():
    
 
 #Just runs main.
-if __name__ == "__main__":main()
+#if __name__ == "__main__":main()
 
