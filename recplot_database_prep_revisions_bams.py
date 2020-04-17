@@ -599,16 +599,14 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
         current_break -= bin_height
     id_breaks = np.array(id_breaks[::-1])
     
-    #TODO: Is better to do it this way
-    zeroes = [0] * len(id_breaks)
-    # zeroes = []
-    # for i in id_breaks:
-    #     zeroes.append(0)
+    zeroes = []
+    for i in id_breaks:
+        zeroes.append(0)
     
     # Retrieve mag_id from provided mag_name
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
-    sql_command = 'SELECT mag_id FROM lookup_table WHERE mag_name = ?'
+    sql_command = 'SELECT mag_id from lookup_table WHERE mag_name = ?'
     cursor.execute(sql_command, (mag_name,))
     mag_id = cursor.fetchone()[0]
     # Retrieve all contigs from mag_name and their sizes
@@ -642,10 +640,9 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
             pct_id_counts.append(zeroes[:])
             cur_bin_start+=bin_width+1
         
-        matrix[id_len[0]] = [starts, ends, numpy_arr]
+        matrix[id_len[0]] = [starts, ends, pct_id_counts]
 
-        
-    return(mag_id, matrices, id_breaks)
+    return(mag_id, matrix, id_breaks)
 
 
 #A function for reading args
