@@ -4,7 +4,6 @@ import sys
 from optparse import OptionParser
 import re
 import bisect
-import numpy as np
 
 #reads a fasta file, gets the lengths of each sequence, and returns a dictionary each with a single sequence name, 
 #its appropriate starts and ends, and a vector of counts to fill with read data, 1 slot per %ID break
@@ -18,8 +17,6 @@ def prepare_matrices(contig_file_name, width, bin_height, id_lower):
 		current_break -= bin_height
 
 	id_breaks = id_breaks[::-1]
-	
-	
 	
 	#Each row will look like so.
 	zeroes = []
@@ -104,106 +101,7 @@ def prepare_matrices(contig_file_name, width, bin_height, id_lower):
 
 		
 	return(matrices, id_breaks)
-
-def numpy_matrices(contig_file_name, width, bin_height, id_lower):
-	#Prep percent identity breaks - always starts at 100 and proceeds down by bin_height steps until it cannot do so again without passing id_lower
-	id_breaks = []
-	current_break = 100
 	
-	while current_break > id_lower:
-		id_breaks.append(current_break)
-		current_break -= bin_height
-
-	id_breaks = id_breaks[::-1]
-
-	
-	#TODO
-	#In the final version, this will be accessec through the database. I have this here only to develop code.
-	matrices = {}
-	#begin reading contigs and determining their lengths.
-	fh = open(contig_file_name)
-	
-	#the first line should always be a contig, and this grabs it. We only want the unique ID before any spaces, as this is what read aligners grab.
-	current_contig = fh.readline()[1:].strip().split()[0]
-	contig_length = 0
-	
-	for line in fh:
-		if line[0] == ">":
-			#create starts, ends, and counts vectors for the current contig
-			
-			#get number of genome pos bins and their approx. width
-			
-			num_bins = int(contig_length / width)
-						
-			starts = np.linspace(1, contig_length, num = num_bins, dtype = np.uint64, endpoint = False)
-			ends = np.append(starts[1:]-1, contig_length)
-			
-			numpy_arr = np.zeros((len(starts), len(id_breaks)), dtype = np.uint32)
-			
-			matrices[current_contig] = [starts, ends, numpy_arr]
-			
-			current_contig = line[1:].strip().split()[0]
-			contig_length = 0
-		else :
-			contig_length += len(line.strip())
-			
-	fh.close()
-	
-	#Last iter. never happens in the loop - happens here, now
-	num_bins = int(contig_length / width)
-	
-	starts = np.linspace(1, contig_length, num = num_bins, dtype = np.uint64, endpoint = False)
-	ends = np.append(starts[1:]-1, contig_length)
-			
-	numpy_arr = np.zeros((len(starts), len(id_breaks)), dtype = np.uint32)
-			
-	matrices[current_contig] = [starts, ends, numpy_arr]
-			
-	return(matrices, id_breaks)			
-	
-def numpy_fill(fillable_matrix, breaks, rec_file):
-	print("fill nummies")
-	rec = open(rec_file)
-	
-	for line in rec:
-		segment = line.split()
-				
-		start = int(segment[1])
-		end = int(segment[2])
-		pct_id = float(segment[3])
-		ref = segment[4]
-		total_count = end-start+1
-		
-		which_id = bisect.bisect_right(breaks, pct_id)-1
-		start_idx = bisect.bisect_left(fillable_matrix[ref][1], start)
-		end_idx = bisect.bisect_left(fillable_matrix[ref][1], end)
-		
-		#which_id = np.searchsorted(breaks, pct_id, side = 'right')-1
-		#start_idx = np.searchsorted(fillable_matrix[ref][1], start)
-		#end_idx = np.searchsorted(fillable_matrix[ref][1], end)
-		
-		if end_idx == len(fillable_matrix[ref][1]):
-			continue
-		
-		#If the read just falls into 1 bin, throw it right on in
-		if start_idx==end_idx:
-			fillable_matrix[ref][2][start_idx][which_id] += total_count
-		#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
-		else:
-			for j in range(start_idx, end_idx+1):
-				overflow = end - fillable_matrix[ref][1][j]
-				if overflow > 0:
-					fillable_matrix[ref][2][j][which_id] += (total_count-overflow)
-					total_count = overflow
-				else :
-					fillable_matrix[ref][2][j][which_id] += total_count
-	
-	rec.close()
-	
-	print("nummies full")
-	
-	return(fillable_matrix)
-
 #This function is designed to take sam-format lines piped from a samtools view command 
 #and fill a recruitment matrix with them, terminating further processing there.		
 def receive_sam(matrix, breaks, export, reads):
@@ -413,6 +311,90 @@ def print_super_rec_anir(matrix, breaks, step, prefix, anir_mat, mags):
 	
 	rec.close()
 
+#This function is designed to take sam-format lines piped from a samtools view command 
+#and fill a recruitment matrix with them, terminating further processing there.		
+def receive_sam_anir(matrix, breaks, export):
+	
+	#contig:min_pct_id:contribution, divisor
+	ANIr_collections = {}
+	
+	zeroes = []
+	
+	for i in breaks:
+		zeroes.append(0)
+	
+	#we need the read
+	for contig in matrix :
+		ANIr_collections[contig] = [zeroes[:], zeroes[:]]
+	
+	for line in sys.stdin:
+	#DON'T pop the line out to console again in this version
+		if export:
+			print(line, end='') 
+		#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
+		if "MD:Z:" not in line:
+			continue
+		else :
+			segment = line.split()
+			
+			ref = segment[2]
+			
+			if ref not in matrix:
+				continue
+			
+			#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
+			iter = len(segment)-1
+			mdz_seg = segment[iter]
+			
+			#If it's not the correct field, proceed until it is.
+			while not mdz_seg.startswith("MD:Z:"):
+				iter -= 1
+				mdz_seg = segment[iter]
+			
+			#Remove the MD:Z: flag from the start
+			mdz_seg = mdz_seg[5:]
+			
+			match_count = re.findall('[0-9]+', mdz_seg)
+			
+			sum=0
+			
+			for num in match_count:
+				sum+=int(num)
+			
+			total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+			
+			pct_id = (sum/(total_count))*100
+			which_id = bisect.bisect_right(breaks, pct_id)-1
+			
+			start = int(segment[3])
+			end = start+total_count-1
+			
+			ANIr_collections[ref][0][which_id] += (total_count*pct_id)/100
+			ANIr_collections[ref][1][which_id] += total_count
+			
+			#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
+			start_idx = bisect.bisect_left(matrix[ref][1], start)
+			end_idx = bisect.bisect_left(matrix[ref][1], end)
+			
+			#there are (a very small number of) reads which align past the end of the contig. This removes them.
+			if end_idx == len(matrix[ref][1]):
+				continue
+			
+			#If the read just falls into 1 bin, throw it right on in
+			if start_idx==end_idx:
+				matrix[ref][2][start_idx][which_id] += total_count
+			#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
+			else:
+				for j in range(start_idx, end_idx+1):
+					overflow = end - matrix[ref][1][j]
+					if overflow > 0:
+						matrix[ref][2][j][which_id] += (total_count-overflow)
+						total_count = overflow
+					else :
+						matrix[ref][2][j][which_id] += total_count
+						
+	return(matrix, ANIr_collections)
+
 def receive_blast_like(matrix, breaks, export, reads):
 	
 	if reads == "":
@@ -515,7 +497,274 @@ def receive_blast_like(matrix, breaks, export, reads):
 
 	
 	return(matrix)
+			
+def receive_blast_like_anir(matrix, breaks):
+	#contig:min_pct_id:contribution, divisor
+	ANIr_collections = {}
+	
+	zeroes = []
+	
+	for i in breaks:
+		zeroes.append(0)
+	
+	#we need the read
+	for contig in matrix :
+		ANIr_collections[contig] = [zeroes[:], zeroes[:]]
+
+	for line in sys.stdin:
+		segment = line.split("\t")
 		
+		if line.startswith("#"):
+			pass
+		
+		ref = segment[1]
+		
+		if ref not in matrix:
+			continue
+
+		pct_id = float(segment[2])
+		
+		pos1 = int(segment[8])
+		pos2 = int(segment[9])
+		
+		start = min(pos1, pos2)
+		end = start+(max(pos1, pos2)-min(pos1, pos2))
+		
+		total_count = end-start+1
+		which_id = bisect.bisect_right(breaks, pct_id)-1
+		
+		#Find the first bin end >= to the read's start and end points. This is the set of bins covered by each read
+		start_idx = bisect.bisect_left(matrix[ref][1], start)
+		end_idx = bisect.bisect_left(matrix[ref][1], end)
+		
+		ANIr_collections[ref][0][which_id] += (total_count*pct_id)/100
+		ANIr_collections[ref][1][which_id] += total_count		
+
+		#there are (a very small number of) reads which align past the end of the contig. This removes them.
+		if end_idx == len(matrix[ref][1]):
+			continue
+		
+		#If the read just falls into 1 bin, throw it right on in
+		if start_idx==end_idx:
+			matrix[ref][2][start_idx][which_id] += total_count
+		#if the read crosses bin boundaries, add the appropriate amount to each successive bin until the read is in the final bin to fill, then throw it in as above.
+		else:
+			for j in range(start_idx, end_idx+1):
+				overflow = end - matrix[ref][1][j]
+				if overflow > 0:
+					matrix[ref][2][j][which_id] += (total_count-overflow)
+					total_count = overflow
+				else :
+					matrix[ref][2][j][which_id] += total_count
+						
+						
+	return(matrix, ANIr_collections)		
+	
+#Contig in first column, mags in second
+def get_mags(mag_file):
+	mag_dict = {}
+	
+	mags = open(mag_file, "r")
+	
+	for line in mags:
+		mag_contig = line.split()
+		mag_dict[mag_contig[0]] = mag_contig[1]
+
+	mags.close()
+	
+	return(mag_dict)
+
+def read_contigs(contig_file_name):
+	print("Reading contigs... ", end="", flush=True)
+	
+	current_contig = ""
+	output = {}
+	
+	fh = open(contig_file_name)
+	
+	for line in fh:
+		if line[0] == ">":
+			current_contig = line[1:].strip()
+			output[current_contig] = 0
+		else :
+			output[current_contig] += len(line.strip())
+	
+	fh.close()
+		
+	print("done!")
+	
+	return(output)
+
+def blast_rec_file(reads, MAGS, prefix):
+	print("Reading BLAST reads... ", end="", flush=True)	
+	
+	if reads == "":
+		for line in sys.stdin:
+			
+			if line.startswith("#"):
+				pass
+		
+			segment = line.split("\t")
+			
+			ref = segment[1]
+			
+			if ref not in MAGS:
+				continue
+
+			pct_id = float(segment[2])
+			
+			pos1 = int(segment[8])
+			pos2 = int(segment[9])
+			
+			start = min(pos1, pos2)
+			end = start+(max(pos1, pos2)-min(pos1, pos2))
+			
+			print(MAGS[ref], str(start), str(end), pct_id, "", sep = "\t", file = rec)
+			
+	else:
+		reads = open(reads, "r")
+		rec = open(prefix+".rec", "w")
+			
+		for line in reads:
+		
+			if line.startswith("#"):
+				pass
+		
+			segment = line.split("\t")
+			
+			ref = segment[1]
+			
+			if ref not in MAGS:
+				continue
+
+			pct_id = segment[2]
+			
+			pos1 = int(segment[8])
+			pos2 = int(segment[9])
+			
+			start = min(pos1, pos2)
+			end = start+(max(pos1, pos2)-min(pos1, pos2))
+			
+			print(MAGS[ref], str(start), str(end), pct_id, ref, sep = "\t", file = rec)
+			
+		reads.close()
+		rec.close()
+		
+	print("done!")
+		
+def sam_rec_file(reads, MAGS, prefix):
+	print("Reading SAM reads... ", end="", flush=True)	
+	if reads == "":
+
+		rec = open(prefix+".rec", "w")
+		
+		for line in sys.stdin:
+		#DON'T pop the line out to console again in this version
+			#print(line, end='') 
+			#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
+			if "MD:Z:" not in line:
+				continue
+			else :
+			
+				segment = line.split()
+				
+				ref = segment[2]
+				
+				if ref not in MAGS:
+					continue
+				
+				#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
+				iter = len(segment)-1
+				mdz_seg = segment[iter]
+				
+				#If it's not the correct field, proceed until it is.
+				while not mdz_seg.startswith("MD:Z:"):
+					iter -= 1
+					mdz_seg = segment[iter]
+				
+				#Remove the MD:Z: flag from the start
+				mdz_seg = mdz_seg[5:]
+				
+				match_count = re.findall('[0-9]+', mdz_seg)
+				
+				sum=0
+				
+				for num in match_count:
+					sum+=int(num)
+				
+				total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+				
+				pct_id = (sum/(total_count))*100
+				
+				start = int(segment[3])
+				end = start+total_count-1
+				
+				# {MAG: {Contigs: [READS]} }
+				
+				print(MAGS[ref], str(start), str(end), str(pct_id), ref, sep = "\t", file = rec)	
+
+		rec.close()
+				
+	else: 
+	
+		reads = open(reads, "r")
+		rec = open(prefix+".rec", "w")
+
+		for line in reads:
+		#DON'T pop the line out to console again in this version
+			#print(line, end='') 
+			#We still want to pass the sam header to samtools, but don't want to work on it for L/R processing
+			if "MD:Z:" not in line:
+				continue
+			else :
+				segment = line.split()
+				
+				ref = segment[2]
+				
+				if ref not in MAGS:
+					continue
+				
+				#Often the MD:Z: field will be the last one in a magicblast output, but not always. Therefore, start from the end and work in.
+				iter = len(segment)-1
+				mdz_seg = segment[iter]
+				
+				#If it's not the correct field, proceed until it is.
+				while not mdz_seg.startswith("MD:Z:"):
+					iter -= 1
+					mdz_seg = segment[iter]
+				
+				#Remove the MD:Z: flag from the start
+				mdz_seg = mdz_seg[5:]
+				
+				match_count = re.findall('[0-9]+', mdz_seg)
+				
+				sum=0
+				
+				for num in match_count:
+					sum+=int(num)
+				
+				total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+				
+				pct_id = (sum/(total_count))*100
+				
+				start = int(segment[3])
+				end = start+total_count-1	
+
+				print(MAGS[ref], str(start), str(end), str(pct_id), ref, sep = "\t", file = rec)
+				
+		reads.close()
+		rec.close()
+	
+	print("done!")
+	
+def print_lim(contig_length, mag_dict, prefix):
+	lim = open(prefix+".lim", "w")
+	
+	for key in contig_length:
+		print(mag_dict[key], key, "1", contig_length[key], sep = "\t", file = lim)
+	
+	lim.close()
+	
 #A function for reading args
 def opts():
 	parser = OptionParser()
@@ -550,25 +799,81 @@ def main():
 	
 	mags = {}
 	
-	#empty_mats, ids = numpy_matrices(contigs, width, step, 70)
-	empty_mats, ids = prepare_matrices(contigs, width, step, 70)
+	if interact :
 	
+		c_len = read_contigs(contigs)
 	
-	rec_f = "recplot_mass.rec"
+		if MAGs == "":
+			for key in c_len:
+				mags[key] = key
+		
+			print_lim(c_len, mags, prefix)
+			
+			if format == "blast":
+				blast_rec_file(reads, mags, prefix)
+			else:
+				sam_rec_file(reads, mags, prefix)
+			
+		else:
+			mags = get_mags(MAGs)
+			
+			removed_contigs = []
+			
+			for key in c_len:
+				if key not in mags:
+					removed_contigs.append(key)
+					
+			for c in removed_contigs:
+				del c_len[c]
+				
+			print_lim(c_len, mags, prefix)	
+			
+			if format == "blast":
+				blast_rec_file(reads, mags, prefix)
+			else:
+				sam_rec_file(reads, mags, prefix)
+			
+	else:
 	
-	full_mats = numpy_fill(empty_mats, ids, rec_f)
+		mat, breaks = prepare_matrices(contigs, width, step, 70)
 	
-	
-	fh = open("numpy_experimental.tsv", "w")
-	
-	for key in full_mats:
-		for i in range(0, len(full_mats[key][0])):
-			print(key, full_mats[key][0][i], full_mats[key][1][i], *full_mats[key][2][i], file = fh)
-	
-	fh.close()
-	
-	
-	
+		if MAGs == "":
+			#If MAGs aren't supplied, add a column specifying this
+			for key in mat:
+				mags[key] = key
+			
+			if format == "blast":
+				
+				mat = receive_blast_like(mat, breaks, export_lines, reads)
+				print_super_rec(mat, breaks, step, prefix, mags)
+				
+			else:
+			
+				mat = receive_sam(mat, breaks, export_lines, reads)
+				print_super_rec(mat, breaks, step, prefix, mags)
+			
+		else: 	
+			mags = get_mags(MAGs)
+			
+			removed_contigs = []
+			
+			for key in mat:
+				if key not in mags:
+					removed_contigs.append(key)
+					
+			for c in removed_contigs:
+				del mat[c]
+				
+			if format == "blast":
+				
+				mat = receive_blast_like(mat, breaks, export_lines, reads)
+				print_super_rec(mat, breaks, step, prefix, mags)
+					
+			else:
+				
+				mat = receive_sam(mat, breaks, export_lines, reads)
+				print_super_rec(mat, breaks, step, prefix, mags)
+
 #Just runs main.
 if __name__ == "__main__":main()
 
