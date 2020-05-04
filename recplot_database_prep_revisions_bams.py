@@ -6,8 +6,7 @@ import bisect
 import sqlite3
 import argparse
 from sys import argv
-import numpy as np
-import pysam
+#import pysam
 
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
@@ -137,6 +136,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
         conn.commit()
         print("Database creation finished!")
+    cursor.close()
     conn.commit()
     conn.close()
     # ========
@@ -478,60 +478,6 @@ def get_mags(mag_file):
             mag_dict[mag_contig[0]] = mag_contig[1]
     return mag_dict
 
-#The purpose of this function is to prepare an empty recplot matrix from a set of contig names and lengths associated with one MAG
-#However, Numpy is slower than base python for this purpose, so this function should be unused.
-def prepare_numpy_matrices(database, mag_name, width, bin_height, id_lower):
-    """ Extracts information of a requested mag and builds the empty matrices
-        to be filled in the next step.
-    
-    Arguments:
-        database {str} -- Name of database to use (location).
-        mag_name {str} -- Name of mag of interest.
-        width {int} -- Width of the "bins" to split contigs into.
-        bin_height {list} -- List of identity percentages to include.
-        id_lower {int} -- Minimum identity percentage to consider for reads mapped.
-    
-    Returns:
-        mag_id [int] -- ID of the mag in the database.
-        matrix [dict] -- Dictionary with list of arrays of start and stop positions
-                         and empty matrix to fill.
-        id_breaks [list] -- List of identity percentages to include.
-    """
-    print("Preparing recruitment matrices...", end="", flush=True)
-    # Prep percent identity breaks - always starts at 100 and proceeds 
-    # down by bin_height steps until it cannot do so again without passing id_lower
-    id_breaks = []
-    current_break = 100
-    while current_break > id_lower:
-        id_breaks.append(current_break)
-        current_break -= bin_height
-    id_breaks = np.array(id_breaks[::-1])
-    
-
-    # Retrieve mag_id from provided mag_name
-    conn = sqlite3.connect(database)
-    cursor = conn.cursor()
-    sql_command = 'SELECT mag_id from lookup_table WHERE mag_name = ?'
-    cursor.execute(sql_command, (mag_name,))
-    mag_id = cursor.fetchone()[0]
-    # Retrieve all contigs from mag_name and their sizes
-    sql_command = 'SELECT contig_id, contig_len from mag_info WHERE mag_id = ?'
-    cursor.execute(sql_command, (mag_id,))
-    contig_sizes = cursor.fetchall()
-    # Create matrices for each contig in the mag_name provided
-    matrix = {}
-    for id_len in contig_sizes:
-        contig_length = id_len[1]
-        num_bins = int(contig_length / width)
-        if num_bins < 1:
-            num_bins = 1
-        starts = np.linspace(1, contig_length, num = num_bins, dtype = np.uint64, endpoint = False)
-        ends = np.append(starts[1:]-1, contig_length)
-        numpy_arr = np.zeros((len(id_breaks), len(starts)), dtype = np.uint32)
-        matrix[id_len[0]] = [starts, ends, numpy_arr]
-    print("Done")
-    return mag_id, matrix, id_breaks
-
 #The purpose of this function is to take an empty recplot matrix object associated with one MAG, query the database for the sample and MAG in question,
 #And fill the database with the returned information.
 def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
@@ -560,7 +506,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     cursor.execute(sql_command, (mag_id,))
 	
 	#TODO: Consider keeping/removing this in final...
-    read_counter = 0
+    #read_counter = 0
     
     #TODO: We shouldn't need to fetch all reads. We can iterate on the cursor without doing this.
     #read_information = cursor.fetchall()
@@ -568,7 +514,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     #for read_mapped in read_information:
     for read_mapped in cursor:
         if read_mapped[1] in matrices:
-            read_counter += 1
+            #read_counter += 1
             contig_id = read_mapped[1]
             read_start = read_mapped[3]
             read_stop = read_mapped[4]
@@ -592,7 +538,8 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
                         read_len = overflow
                     else :
                         matrices[contig_id][2][j][read_id_index] += read_len
-    print("done!", read_counter, "reads collected!")
+    print("done!")
+	#print("done!", read_counter, "reads collected!")
     return matrices
 
 #The purpose of this function is to prepare an empty recplot matrix from a set of contig names and lengths associated with one MAG
@@ -606,7 +553,7 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
     while current_break > id_lower:
         id_breaks.append(current_break)
         current_break -= bin_height
-    id_breaks = np.array(id_breaks[::-1])
+    id_breaks = id_breaks[::-1]
     
     zeroes = []
     for i in id_breaks:
@@ -675,10 +622,54 @@ def extract_MAG_for_R(database, sample, mag_name, width, bin_height, id_lower):
 #This function queries the database and returns the names of all of the samples present within it
 def assess_samples(database):
     print("Acquiring samples in "+ database)
+	# Retrieve sample_id from sample_name provided
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = 'SELECT sample_name from sample_info'
+    cursor.execute(sql_command)
+    
+    samples = []
+	
+    for samp in cursor:
+        samples.append(samp)
+		
+    cursor.close()
+	
+    return(samples)
 
 #This function queries the database and returns the MAGs covered by a given sample.    
 def assess_MAGs(database, sample):
     print("Acquiring MAGs in "+sample)
+	# Retrieve sample_id from sample_name provided
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = 'SELECT mag_name from mags_per_sample WHERE sample_name = ?'
+    cursor.execute(sql_command, (sample,))
+    
+    mags = []
+	
+    for mag in cursor:
+        mags.append(mag)
+		
+    cursor.close()
+	
+    return(mags)
+	
+def get_contig_names(database, mag_name):
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = 'SELECT contig_name from lookup_table WHERE mag_name = ?'
+    cursor.execute(sql_command, (mag_name,))
+    
+    names = []
+	
+    for contig in cursor:
+        names.append(contig)
+		
+    cursor.close()
+	
+    return(names)
+	
 
 
 #A function for reading args
