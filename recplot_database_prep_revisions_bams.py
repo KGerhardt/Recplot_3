@@ -7,7 +7,7 @@ import sqlite3
 import argparse
 from sys import argv
 import numpy as np
-# import pysam
+import pysam
 
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
@@ -121,7 +121,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # Read read mapping file for each sample and fill corresponding table
     for sample_name, mapping_file in sampleid_to_sample.items():
         mags_in_sample = []
-        print("Parsing {}... ".format(mapping_file))
+        print("Parsing {}... ".format(mapping_file), end = "",flush = True)
         contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn)
         cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
         all_contigs = cursor.fetchall()
@@ -136,7 +136,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         mags_in_sample = [(mapping_file, x) for x in mags_in_sample]
         cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
         conn.commit()
-        print("Done")
+        print("Database creation finished!")
     conn.commit()
     conn.close()
     # ========
@@ -164,7 +164,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     
     # Read mapping files and fill sample tables
     if map_format == "blast":
-        print("Parsing tabular BLAST format reads... ")
+        print("Parsing tabular BLAST format reads... ", end = "", flush = True)
         with open(mapping_file) as input_reads:
             record_counter = 0
             records = []
@@ -205,7 +205,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
             cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
             
     if map_format == "sam":
-        print("Parsing SAM format reads... ")
+        print("Parsing SAM format reads... ", end = "", flush = True)
         record_counter = 0
         records = []
         with open(mapping_file) as input_reads:
@@ -259,7 +259,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
             cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
     
     if map_format == "bam":
-        print("Parsing BAM format reads... ")
+        print("Parsing BAM format reads... ", end = "", flush = True)
         record_counter = 0
         records = []
         
@@ -329,8 +329,12 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
             cursor.execute("commit")
         # Create index for faster access
         cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
+		
+
     
     conn.commit()
+
+    print("done!")
     
     return contigs_in_sample
 
@@ -544,7 +548,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
         matrix [dict] -- Dictionary with list of arrays of start and stop positions
                          and filled matrix to plot.
     """
-    print("Filling matrices...")
+    print("Filling matrices...", end = "",flush = True)
     # Retrieve sample_id from sample_name provided
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
@@ -554,6 +558,9 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     # Retrieve all read information from mag_name and sample_name provided
     sql_command = 'SELECT * from ' + sample_id + ' WHERE mag_id = ?'
     cursor.execute(sql_command, (mag_id,))
+	
+	#TODO: Consider keeping/removing this in final...
+    read_counter = 0
     
     #TODO: We shouldn't need to fetch all reads. We can iterate on the cursor without doing this.
     #read_information = cursor.fetchall()
@@ -561,6 +568,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     #for read_mapped in read_information:
     for read_mapped in cursor:
         if read_mapped[1] in matrices:
+            read_counter += 1
             contig_id = read_mapped[1]
             read_start = read_mapped[3]
             read_stop = read_mapped[4]
@@ -572,18 +580,19 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
             read_start_loc = bisect.bisect_left(matrices[contig_id][1], read_start)
             read_stop_loc = bisect.bisect_left(matrices[contig_id][1], read_stop)
             # If the read falls entirely on a bin add all bases to the bin
+			
             if read_start_loc == read_stop_loc:
-                matrices[contig_id][2][read_id_index][read_start_loc] += read_len
+                matrices[contig_id][2][read_start_loc][read_id_index] += read_len
             # On the contrary split bases between two or more bins
             else:
                 for j in range(read_start_loc, read_stop_loc + 1):
                     overflow = read_stop - matrices[contig_id][1][j]
                     if overflow > 0:
-                        matrices[contig_id][2][read_id_index][j] += (read_len - overflow)
+                        matrices[contig_id][2][j][read_id_index] += (read_len - overflow)
                         read_len = overflow
                     else :
-                        matrices[contig_id][2][read_id_index][j] += read_len
-    print("Done")
+                        matrices[contig_id][2][j][read_id_index] += read_len
+    print("done!", read_counter, "reads collected!")
     return matrices
 
 #The purpose of this function is to prepare an empty recplot matrix from a set of contig names and lengths associated with one MAG
@@ -599,16 +608,14 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
         current_break -= bin_height
     id_breaks = np.array(id_breaks[::-1])
     
-    #TODO: Is better to do it this way
-    zeroes = [0] * len(id_breaks)
-    # zeroes = []
-    # for i in id_breaks:
-    #     zeroes.append(0)
+    zeroes = []
+    for i in id_breaks:
+        zeroes.append(0)
     
     # Retrieve mag_id from provided mag_name
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
-    sql_command = 'SELECT mag_id FROM lookup_table WHERE mag_name = ?'
+    sql_command = 'SELECT mag_id from lookup_table WHERE mag_name = ?'
     cursor.execute(sql_command, (mag_name,))
     mag_id = cursor.fetchone()[0]
     # Retrieve all contigs from mag_name and their sizes
@@ -641,11 +648,37 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
             ends.append(int((cur_bin_start+bin_width)))
             pct_id_counts.append(zeroes[:])
             cur_bin_start+=bin_width+1
+		
+		#Append final bin; guarantees the final bin = contig length
+        starts.append(int(cur_bin_start))
+        ends.append(contig_length)
+        pct_id_counts.append(zeroes[:])
         
-        matrix[id_len[0]] = [starts, ends, numpy_arr]
+        matrix[id_len[0]] = [starts, ends, pct_id_counts]
+        
+    print("done!")
 
-        
-    return(mag_id, matrices, id_breaks)
+    return(mag_id, matrix, id_breaks)
+
+    
+#This function orchestrates calls to prepare_matrices and fill_matrices. 
+#Translations between R and python through reticulate are inefficient and may cause errors with data typing.
+#Constraining the transfers to arguments passed from R and a return passed from python alleviates these issues.
+def extract_MAG_for_R(database, sample, mag_name, width, bin_height, id_lower):
+    print("Making recruitment matrix for:", mag_name, "in sample:", sample)
+    mag_id, matrix, id_breaks = prepare_matrices(database, mag_name, width, bin_height, id_lower)
+    
+    matrix = fill_matrices(database, mag_id, sample, matrix, id_breaks)
+    
+    return(matrix, id_breaks)
+    
+#This function queries the database and returns the names of all of the samples present within it
+def assess_samples(database):
+    print("Acquiring samples in "+ database)
+
+#This function queries the database and returns the MAGs covered by a given sample.    
+def assess_MAGs(database, sample):
+    print("Acquiring MAGs in "+sample)
 
 
 #A function for reading args
@@ -703,5 +736,5 @@ def main():
    
 
 #Just runs main.
-if __name__ == "__main__":main()
+#if __name__ == "__main__":main()
 
