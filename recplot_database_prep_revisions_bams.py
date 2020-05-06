@@ -122,7 +122,6 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn)
         cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
         all_contigs = cursor.fetchall()
-        print(contigs_in_sample)
         for element in all_contigs:
             if element[0] in contigs_in_sample:
                 if element[1] not in mags_in_sample:
@@ -131,8 +130,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
                     continue
             else:
                 continue
-        # mags_in_sample = [(mapping_file, x) for x in mags_in_sample]
-        print(mags_in_sample)
+        mags_in_sample = [(mapping_file, x) for x in mags_in_sample]
         cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
         conn.commit()
         print("Database creation finished!")
@@ -592,7 +590,6 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
     sql_command = 'SELECT sample_id from sample_info WHERE sample_name = ?'
-    print(sample_name)
     cursor.execute(sql_command, (sample_name,))
     sample_id = cursor.fetchone()[0]
     # Retrieve all read information from mag_name and sample_name provided
