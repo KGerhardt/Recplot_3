@@ -15,9 +15,10 @@ use_python("/usr/local/bin/python")
 
 #setwd("/mnt/c/Users/Kenji/Desktop/Recplot4")
 
-setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
+#setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
 
-source_python("recplot_database_prep_revisions_bams.py")
+#This certainly makes the script accessible...
+source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_prep_revisions_bams.py")
 
 ##############################################
 #The python import is a space-efficient, but strcutrually awkward data object
@@ -307,6 +308,8 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
   
 }
 
+
+#This is the GUI function
 recplot_landing_page <- function(){
   
   if (interactive()) {
