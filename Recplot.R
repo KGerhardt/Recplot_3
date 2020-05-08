@@ -10,7 +10,6 @@ library(shinyBS)
 #use_condaenv()
 use_python("/usr/local/bin/python")
 
-
 ###########################Development variables
 
 #setwd("/mnt/c/Users/Kenji/Desktop/Recplot4")
@@ -18,8 +17,6 @@ use_python("/usr/local/bin/python")
 #setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
 
 #This certainly makes the script accessible...
-#source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_prep_revisions_bams.py")
-
 source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
 
 ##############################################
@@ -141,7 +138,7 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
           axis.line = element_line(colour = "black"), 
           panel.background = element_blank(), 
           axis.title.x = element_blank(), 
-          axis.text.y = element_text(angle = 90, hjust = 0.5),
+          #axis.text.y = element_text(angle = 90, hjust = 0.5),
           axis.title = element_text(size = 14),
           axis.text = element_text(size = 14)) +
     scale_color_manual(values = group.colors) +
@@ -310,11 +307,18 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
   
 }
 
-
 #This is the GUI function
 recplot_landing_page <- function(){
   
   if (interactive()) {
+    
+    system <- get_sys()
+    
+    if(system == "Windows"){
+      format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
+    }else{
+      format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
+    }
     
     ui <- fluidPage(
       
@@ -334,7 +338,9 @@ recplot_landing_page <- function(){
                                     br(),
                                     actionButton('reads', '(4) Select Reads', icon = icon("file-upload")),
                                     textInput("read_file",label = NULL, value = "No mapped read file selected."),
-                                    selectInput('fmt', 'Mapped Read Format', selected = "Tabular BLAST", choices = c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")),
+                                    
+                                    
+                                    selectInput('fmt', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
                                     br(),
                                     textInput("dbname",label = "(5) Name the database", value = "Enter name here."),
                                     br(),
@@ -360,7 +366,7 @@ recplot_landing_page <- function(){
                                     br(),
                                     actionButton('add_sample', 'Add more reads?', icon = icon("file-upload")),
                                     textInput("add_samp",label = NULL, value = "No new sample to add."),
-                                    selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")),
+                                    selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
                                     
                                     bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
                                     bsTooltip("add_sample", "(Optional) Add more mapped reads to the sample?", placement = "right"),
@@ -417,9 +423,17 @@ recplot_landing_page <- function(){
                            ),
                            mainPanel(
                             #Spacing
-                            br(),
-                            br(),
-                            plotOutput("read_recruitment_plot", height = "800px")
+                            fluidRow(
+                              column(12,
+                                     div(style = "height:60px;background-color: white;", "")
+                            )
+                            ),
+                            fluidRow(
+                              
+                              plotOutput("read_recruitment_plot", height = "850px")
+                              
+                            )
+                            
                             
                            )
                   ),
@@ -889,7 +903,7 @@ recplot_landing_page <- function(){
         
         seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Seq. Depth: ", count)))+
           geom_step(alpha = 0.75) +
-          scale_y_continuous(trans = "log10") +
+          #scale_y_continuous(trans = "log10") +
           scale_x_continuous(expand=c(0,0))+
           theme(legend.position = "none", 
                 panel.border = element_blank(), 
@@ -898,15 +912,19 @@ recplot_landing_page <- function(){
                 axis.line = element_line(colour = "black"), 
                 panel.background = element_blank(), 
                 axis.title.x = element_blank(), 
-                axis.text.y = element_text(angle = 90, hjust = 0.5),
+                #axis.text.y = element_text(angle = 90, hjust = 0.5),
                 axis.title = element_text(size = 14),
                 axis.text = element_text(size = 14)) +
           scale_color_manual(values = group.colors) +
           ylab("Depth")
         
+        a <- list(
+          showticklabels = TRUE,
+          exponentformat = "e"
+        )
         
         seq_depth_chart <- ggplotly(seq_depth_chart, dynamicTicks = T, tooltip = c("text")) %>% 
-          layout(plot_bgcolor = "white")
+          layout(plot_bgcolor = "white", yaxis = a)
         
         
         return(seq_depth_chart)
