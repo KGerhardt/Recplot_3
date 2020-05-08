@@ -6,7 +6,12 @@ import bisect
 import sqlite3
 import argparse
 from sys import argv
-#import pysam
+import platform
+
+if platform.system() == "Windows":
+    print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
+else:
+    import pysam
 
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
