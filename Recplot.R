@@ -782,7 +782,7 @@ recplot_landing_page <- function(){
                 plot.margin = margin(0, 0, 0, 7)
               )
             static_plot <- plot_grid(
-              title, overall_plot,
+              title, static_plot,
               ncol = 1,
               # rel_heights values control vertical title margins
               rel_heights = c(0.1, 1)
