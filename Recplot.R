@@ -18,7 +18,9 @@ use_python("/usr/local/bin/python")
 #setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
 
 #This certainly makes the script accessible...
-source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_prep_revisions_bams.py")
+#source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_prep_revisions_bams.py")
+
+source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
 
 ##############################################
 #The python import is a space-efficient, but strcutrually awkward data object
