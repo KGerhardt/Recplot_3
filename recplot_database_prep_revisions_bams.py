@@ -31,13 +31,10 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         (mag_name TEXT, mag_id INTEGER, contig_name TEXT, contig_id INTEGER)')
     # Create sample_info, mag_info, mags_per_sample, and gene_info tables
     cursor.execute('DROP TABLE IF EXISTS mag_info')
-    cursor.execute('DROP TABLE IF EXISTS gene_info')
     cursor.execute('DROP TABLE IF EXISTS sample_info')
     cursor.execute('DROP TABLE IF EXISTS mags_per_sample')
     cursor.execute('CREATE TABLE mag_info \
         (mag_id INTEGER, contig_id INTEGER, contig_len INTEGER)')
-    cursor.execute('CREATE TABLE gene_info \
-        (mag_id INTEGER, contig_id INTEGER, gene TEXT, gene_start INTEGER, gene_stop INTEGER)')
     cursor.execute('CREATE TABLE sample_info \
         (sample_name TEXT, sample_id TEXT, sample_number INTEGER)')
     cursor.execute('CREATE TABLE mags_per_sample \
@@ -140,6 +137,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     conn.commit()
     conn.close()
     # ========
+
 
 def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     """ This script reads a read mapping file, extracts the contig to which each read maps,
@@ -329,13 +327,8 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
             cursor.execute("commit")
         # Create index for faster access
         cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
-		
-
-    
     conn.commit()
-
     print("done!")
-    
     return contigs_in_sample
 
 
@@ -419,6 +412,51 @@ def add_sample(database, new_mapping_files, map_format):
     conn.close()
 
 
+def parse_prodigal_genes(prodigal_gff):
+    gene_info = []
+    with open(prodigal_gff, 'r') as prodigal_genes:
+        for line in prodigal_genes:
+            if line.startswith("#"):
+                continue
+            else:
+                line = line.strip().split()
+                contig = line[0]
+                start = min(int(line[3]), int(line[4]))
+                end = max(int(line[3]), int(line[4]))
+                strand = line[6]
+                annotation = line[8]
+                gene_id = annotation.split(";")[0].split("_")[1]
+                gene_id = contig + "_" + gene_id
+                gene_info.append((contig, gene_id, start, end, strand, annotation))
+    return gene_info
+
+
+def add_gene_information(database, gene_info):
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS gene_info')
+    cursor.execute('CREATE TABLE gene_info \
+        (contig_name TEXT, gene_name TEXT, gene_start INTEGER, gene_stop INTEGER, strand TEXT, annotation TEXT)')
+    cursor.execute("begin")
+    cursor.executemany('INSERT INTO gene_info VALUES(?, ?, ?, ?, ?, ?)', gene_info)
+    cursor.execute("commit")
+
+
+def add_gene_annotation(database, annotation):
+    annotations = []
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS gene_annotation')
+    cursor.execute('CREATE TABLE gene_annotation \
+        (gene_name TEXT, annotation TEXT)')
+    with open(annotation) as gene_annot:
+        for line in gene_annot:
+            line = line.strip().split("\t")
+            annotations.append((line[0], line[1]))
+    cursor.execute("begin")
+    cursor.executemany('INSERT INTO gene_annotation VALUES(?, ?)', annotations)
+    cursor.execute("commit")
+
 def read_contigs(contig_file_name):
     """ Reads a FastA file and returns
         sequence ids and sizes
@@ -457,7 +495,6 @@ def read_contigs(contig_file_name):
     contig_sizes[current_contig] = contig_length
     
     print("done!")
-    
     return contig_sizes
 
 
@@ -682,10 +719,11 @@ def main():
 
     parser.add_argument("-c", "--contigs", dest="contigs", 
     help = "This should be a FASTA file containing all and only the contigs that you would like to be part of your recruitment plot.")
-    parser.add_argument("-m", "--mags", dest="mags", default="", help = "A tab separated file containing the names of MAGs in the first column and contigs in the second column. Every contig should have its parent MAG listed in this file.")    
+    parser.add_argument("-m", "--mags", dest="mags", default="", help = "A tab separated file containing the names of contigs in the first column and MAGs in the second column. Every contig should have its parent MAG listed in this file.")    
     parser.add_argument("-r", "--reads", dest="reads", nargs='+', help = "This should be a file with reads aligned to your contigs in any of the following formats: tabular BLAST(outfmt 6), SAM, or Magic-BLAST")
     parser.add_argument("-f", "--format", dest="map_format", default="blast", help="The format of the reads file (write 'blast' or 'sam'). Defaults to tabular BLAST.")
-    #parser.add_argument("-g", "--genes", dest="genes", default = "", help = "Optional GFF3 file containing gene starts and stops to be use in the recruitment plot.")
+    parser.add_argument("-g", "--genes", dest="genes", default = "", help = "Optional GFF3 file containing gene starts and stops to be use in the recruitment plot.")
+    parser.add_argument("-a", "--annot", dest="annotation", default = "", help = "Optional file with gene name in the first column and annotations in the second column.")
     parser.add_argument("-i", "--ID-step", dest="id_step", default = 0.5, help = "Percent identity bin width. Default 0.5.")
     parser.add_argument("-w", "--bin-width", dest="bin_width", default = 1000, help = "Approximate genome bin width in bp. Default 1000.")
     parser.add_argument("-o", "--output", dest="out_file_name", default = "recruitment_plot", help = "Prefix of results to be output. Default: 'recruitment_plot'")
@@ -701,7 +739,8 @@ def main():
     reads = args.reads
     mags = args.mags
     map_format = args.map_format
-    # genes = args.genes
+    genes = args.genes
+    annotation = args.annotation
     step = float(args.id_step)
     width = int(args.bin_width)
     prefix = args.out_file_name
@@ -714,18 +753,20 @@ def main():
     sqldb_creation(contigs, mags, reads, map_format, sql_database)
 
     # Prepare user requested information
-    mag_id, matrix, id_breaks = prepare_matrices(sql_database, "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
-    matrix = fill_matrices(sql_database, mag_id, "03.All_SAR11--ETNP_2013_S02_SV89_300m.blast.bh", matrix, id_breaks)
-    print(matrix)
+    # mag_id, matrix, id_breaks = prepare_matrices(sql_database, "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
+    # matrix = fill_matrices(sql_database, mag_id, "03.All_SAR11--ETNP_2013_S02_SV89_300m.blast.bh", matrix, id_breaks)
 
     # Add new sample to database
     # add_sample(sql_database, ["03.First_Mapping.blast.bh", "TEST"], map_format)
 
+    # Add gene information
+    gene_information = parse_prodigal_genes(genes)
+    add_gene_information(sql_database, gene_information)
+    add_gene_annotation(sql_database, annotation)
 
-    mags = {}
     
    
 
 #Just runs main.
-#if __name__ == "__main__":main()
+if __name__ == "__main__":main()
 
