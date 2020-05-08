@@ -13,6 +13,8 @@ if platform.system() == "Windows":
 else:
     import pysam
 
+def get_sys():
+    return(platform.system())
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     """ Read information provided by user and creates SQLite3 database
