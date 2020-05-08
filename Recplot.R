@@ -497,6 +497,10 @@ recplot_landing_page <- function(){
       
       plotting_materials <- NA
       
+      exist_db <- "No existing database selected. Try again?"
+      
+      samples_in_db <- "No database selected or built yet."
+      
       #Database building
       
       observeEvent(input$dir, {
@@ -638,17 +642,25 @@ recplot_landing_page <- function(){
       
       observeEvent(input$exist_dbname, {
         
-        if(input$exist_dbname == "No DB currently selected"){
+        if(input$exist_dbname == "No DB currently selected" | input$exist_dbname == "No existing database selected. Try again?"){
           samples_in_db <- c("nothing selected"="Nothing Selected")
         }else{
-          samples_in_db = assess_samples(input$exist_dbname)
+          
+          tryCatch({
+            samples_in_db = assess_samples(input$exist_dbname)
+
+          },
+          error = function(cond){
+            output$message <- renderText(paste("No existing database selected. Try again?"))
+            return(NA)
+          })
+          
           labels <- unlist(samples_in_db)
           
           samples_in_db <- unlist(samples_in_db)
           names(samples_in_db) = labels
           
-          #print(samples_in_db)
-        }
+          }
         
         updateSelectInput(session, "samples", choices = samples_in_db)
         updateSelectInput(session, "samples_interact", choices = samples_in_db)
