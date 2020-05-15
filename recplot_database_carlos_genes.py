@@ -124,7 +124,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # Read read mapping file for each sample and fill corresponding table
     for sample_name, mapping_file in sampleid_to_sample.items():
         mags_in_sample = []
-        print("Parsing {}... ".format(mapping_file), end = "",flush = True)
+        #print("Parsing {}... ".format(mapping_file), end = "",flush = True)
         contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn)
         cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
         all_contigs = cursor.fetchall()
