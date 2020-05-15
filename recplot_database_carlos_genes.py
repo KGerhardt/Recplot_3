@@ -143,8 +143,6 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     cursor.close()
     conn.commit()
     conn.close()
-    # ========
-
 
 def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     """ This script reads a read mapping file, extracts the contig to which each read maps,
@@ -353,6 +351,7 @@ def add_sample(database, new_mapping_files, map_format):
         samples_dict[sample[0]] = sample[1]
         if sample[2] > last_sample:
             last_sample = sample[2]
+	
     # Retrieve contig - mag correspondence
     sql_command = 'SELECT * from lookup_table'
     cursor.execute(sql_command)
@@ -504,7 +503,6 @@ def read_contigs(contig_file_name):
     print("done!")
     return contig_sizes
 
-
 def get_mags(mag_file):
     """ Reads a file with columns:
         Contig_name MAG_name
@@ -651,7 +649,130 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
 
     return(mag_id, matrix, id_breaks)
 
+def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
+    #Prep percent identity breaks - always starts at 100 and proceeds down by bin_height steps until it cannot do so again without passing id_lower
+    print("Preparing recruitment matrices...", end="", flush=True)
+    # Prep percent identity breaks - always starts at 100 and proceeds 
+    # down by bin_height steps until it cannot do so again without passing id_lower
+    id_breaks = []
+    current_break = 100
+    while current_break > id_lower:
+        id_breaks.append(current_break)
+        current_break -= bin_height
+    id_breaks = id_breaks[::-1]
     
+    zeroes = []
+    for i in id_breaks:
+        zeroes.append(0)
+    
+    # Retrieve mag_id from provided mag_name
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = 'SELECT mag_id from lookup_table WHERE mag_name = ?'
+    cursor.execute(sql_command, (mag_name,))
+    mag_id = cursor.fetchone()[0]
+    # Retrieve all contigs from mag_name and their sizes
+    sql_command = 'SELECT contig_id, contig_len from mag_info WHERE mag_id = ?'
+    cursor.execute(sql_command, (mag_id,))
+    contig_sizes = cursor.fetchall()		
+	
+	#Contig ID is used above, but contig names will be needed to translate from the genes table and the contig data
+    contig_curs = get_contig_names(database, mag_name)
+    contig_names = []
+	
+    for item in contig_curs:
+        contig_names.append(item[0])
+			
+	#Retrieve all gene info - order listed
+    sql_command = 'SELECT contig_name, gene_name, gene_start, gene_stop, strand, annotation from gene_info WHERE contig_name IN (SELECT contig_name from lookup_table WHERE mag_id = ?)'
+    cursor.execute(sql_command, (mag_id,))
+    gene_sizes = cursor.fetchall()
+	
+    gene_matrix = {}
+	
+	#Separates gene data into contigs to allow for access by contig during matrix creation.
+    for item in gene_sizes:
+        if item[0] not in gene_matrix:
+            gene_matrix[item[0]] = [[item[1]], [item[2]], [item[3]], [item[4]], [item[5]]]
+        else:
+            gene_matrix[item[0]][0].append(item[1])
+            gene_matrix[item[0]][1].append(item[2])
+            gene_matrix[item[0]][2].append(item[3])
+            gene_matrix[item[0]][3].append(item[4])
+            gene_matrix[item[0]][4].append(item[5])
+	
+	#Final data structures initialization
+    matrix = {}
+	
+    #Since genes are separated, id_len can be iterated through to give a length of contig for each and all the assoc. gene data can be accessed by name
+    
+    #id_len is a list of contig name, contig_length
+    for id_len in contig_sizes:
+        
+		#These are the starts and ends of each gene on this contig
+        starts = gene_matrix[str(contig_names[id_len[0]-1])][1][:]
+        ends = gene_matrix[str(contig_names[id_len[0]-1])][2][:]
+        		
+        pct_id_counts = []
+        
+        contig_length = id_len[1]
+		
+        final_starts = [1]
+        final_ends = []
+		
+		#We want to see the genes in the context of the contig, so we have to add bins for all intergenic regions
+		#This loop starts with 1 and creates a bin end based on the next gene start, then adds the gene's start and end, then adds a new start based on the gene's end
+        for i in range(0, len(starts)):
+            final_ends.append(starts[i]-1)
+            final_starts.append(starts[i])
+            final_ends.append(ends[i])
+            final_starts.append(ends[i]+1)
+		
+		#Caps the ends with the end of the contig
+        final_ends.append(contig_length)
+		
+		#If a gene starts at 1, then there should be a 1, 0 pair in the first position of the final starts/ends and the bin is unnecessary. This removes those
+        if final_ends[0] < 1:
+            del final_starts[0]
+            del final_ends[0]
+			
+		#If a gene terminates at the end of the contig, then the final start would be contig length + 1 and the bin is unnecessary. This removes those
+        if final_starts[len(final_starts)-1] > final_ends[len(final_starts)-1]:
+            del final_starts[len(final_starts)-1]
+            del final_ends[len(final_starts)-1]
+		
+        starts = []
+        ends = []
+		#If genes overlap, two problems are created:
+		# (1) Intergenic region will have end >= start
+		# (2) The end of the first overlapping gene will be <= the start of the second
+		#This removes the intergenic regions and shoves the start/ends back roughly equal distances when they overlap - marginally inaccurate, but necessary to maintain histogram behavior
+		#Has to be added to new lists because I cannot modify length of final starts/final ends inside of loop
+        for i in range(0, len(final_starts)):
+            if final_ends[i] >= final_starts[i]:
+                starts.append(final_starts[i])
+                ends.append(final_ends[i])
+            else:
+                midpt = int((final_ends[i-1] + final_starts[i+1])/2)
+                #last element added was final_ends[i-1], and this is what needs updated
+                ends[len(ends)-1] = midpt
+				#This will naturally be added next loop, which should always happen because there will always be 1 more index to iterate over
+                final_starts[i+1] = midpt + 1
+				
+        
+				
+
+		#Now add zeroes.
+        pct_id_counts = []
+        for index in starts:
+            pct_id_counts.append(zeroes[:])
+        
+		#Add them to the data item
+        matrix[id_len[0]] = [starts, ends, pct_id_counts]
+        
+    print("done!")
+    return(mag_id, matrix, id_breaks, gene_matrix)
+	
 #This function orchestrates calls to prepare_matrices and fill_matrices. 
 #Translations between R and python through reticulate are inefficient and may cause errors with data typing.
 #Constraining the transfers to arguments passed from R and a return passed from python alleviates these issues.
@@ -663,6 +784,15 @@ def extract_MAG_for_R(database, sample, mag_name, width, bin_height, id_lower):
     
     return(matrix, id_breaks)
     
+def extract_genes_MAG_for_R(database, sample, mag_name, bin_height, id_lower):
+    print("Making recruitment matrix for:", mag_name, "in sample:", sample)
+    mag_id, matrix, id_breaks, gene_table = prepare_matrices_genes(database, mag_name, bin_height, id_lower)
+    
+    matrix = fill_matrices(database, mag_id, sample, matrix, id_breaks)
+    
+    return(matrix, id_breaks, gene_table)
+    
+	
 #This function queries the database and returns the names of all of the samples present within it
 def assess_samples(database):
     print("Acquiring samples in "+ database)
@@ -714,8 +844,33 @@ def get_contig_names(database, mag_name):
 	
     return(names)
 	
+def add_genes_to_db(database, genes_file, gene_format):
+    if(gene_format == "prodigal"):
+        gene_information = parse_prodigal_genes(genes_file)
+    else:
+        print("I don't do that yet")
+	
+    add_gene_information(database, gene_information)
+#add_gene_annotation(database, annotation)
+
+def check_presence_of_genes(database):
+    conn = sqlite3.connect(database)
+    cursor = conn.cursor()
+    sql_command = "SELECT name FROM sqlite_master WHERE type='table'"
+    cursor.execute(sql_command,)
+	
+    checker = False
+	
+    for name in cursor:
+        if str(name) == "('gene_info',)":
+            checker = True
+	
+    cursor.close()
+    return(checker)
 
 
+
+	
 #A function for reading args
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
@@ -757,7 +912,7 @@ def main():
     sql_database = args.sql_database
     
     # Create databases
-    sqldb_creation(contigs, mags, reads, map_format, sql_database)
+    #sqldb_creation(contigs, mags, reads, map_format, sql_database)
 
     # Prepare user requested information
     # mag_id, matrix, id_breaks = prepare_matrices(sql_database, "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
@@ -767,9 +922,9 @@ def main():
     # add_sample(sql_database, ["03.First_Mapping.blast.bh", "TEST"], map_format)
 
     # Add gene information
-    gene_information = parse_prodigal_genes(genes)
-    add_gene_information(sql_database, gene_information)
-    add_gene_annotation(sql_database, annotation)
+    #gene_information = parse_prodigal_genes(genes)
+    #add_gene_information(sql_database, gene_information)
+    #add_gene_annotation(sql_database, annotation)
 
     
    

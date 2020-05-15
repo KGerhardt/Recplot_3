@@ -83,7 +83,7 @@ pydat_to_recplot_dat <- function(extracted_MAG, contig_names){
 
 #Transform the base data into the static recplot - use it for a print me! function.
 #Add in the title as sample : MAG
-create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, ...){
+create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ...){
   
   ends <- base[, max(End), by = contig]
   ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
@@ -178,6 +178,7 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
       xlab(label = element_blank()) +
       ylab(label = element_blank())
     
+    if(showpeaks){
     
     enve.recplot2.__peakHist <- function
     ### Internal ancilliary function (see `enve.RecPlot2.Peak`).
@@ -201,40 +202,50 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
     
     min_info <- list()
     #min_info$pos.breaks = c(ends$V1, pos_max/bp_div)
-    min_info$pos.breaks = base$End
-    min_info$pos.counts.in = ddSave$count[ddSave$group_label == "depth.in"]
     
-    #This is finicky and just doesn't work like half the time.
+    ends[, adjust := c(-1, V1[1:nrow(ends)-1])+1]
     
-    try({peaks <- enve.recplot2.findPeaks(min_info)
+    base[, contiguous_end := End + ends$adjust[match(contig, ends$contig)]]
     
-    dpt <- signif(as.numeric(lapply(peaks, function(x) x$seq.depth)), 2)
-    frx <- signif(100 * as.numeric(lapply(peaks,function(x) ifelse(length(x$values) == 0, x$n.hat, length(x$values))/x$n.total)), 2)
+    min_info$pos.breaks = c(0, base$contiguous_end[match(ddSave$seq_pos[ddSave$group_label == "depth.in"], base$seq_pos)])
     
+    min_info$pos.counts.in = ddSave$V1[ddSave$group_label == "depth.in"]
     
+    #This is finicky
     
-    if (peaks[[1]]$err.res < 0) {
-      err <- paste(", LL:", signif(peaks[[1]]$err.res,3))
-    }  else {
-      err <- paste(", err:", signif(as.numeric(lapply(peaks, function(x) x$err.res)), 2))
-    }
-    labels <- paste(letters[1:length(peaks)], ". ", dpt, "X (", frx, "%", err, ")", sep = "")
-    
-    peak_counts <- lapply(peaks, enve.recplot2.__peakHist, h.mids)
-    
-    plot_breaks = h.breaks[-length(h.breaks)]
-    
-    gg_peak_info <- data.table(plot_breaks = rep(plot_breaks, length(peak_counts)), count = unlist(peak_counts), grp = rep(labels, each = length(plot_breaks)))
-    
-    p4 <- p4 + geom_line(data = gg_peak_info, aes(x = plot_breaks, y = count, color = grp, group = grp), inherit.aes = F, color = "red", lwd = 1.13)
-    
+    try({
+      peaks <- enve.recplot2.findPeaks(min_info)
+      
+      dpt <- signif(as.numeric(lapply(peaks, function(x) x$seq.depth)), 2)
+      frx <- signif(100 * as.numeric(lapply(peaks,function(x) ifelse(length(x$values) == 0, x$n.hat, length(x$values))/x$n.total)), 2)
+      
+      
+      
+      if (peaks[[1]]$err.res < 0) {
+        err <- paste(", LL:", signif(peaks[[1]]$err.res,3))
+      }  else {
+        err <- paste(", err:", signif(as.numeric(lapply(peaks, function(x) x$err.res)), 2))
+      }
+      labels <- paste(letters[1:length(peaks)], ". ", dpt, "X (", frx, "%", err, ")", sep = "")
+      
+      peak_counts <- lapply(peaks, enve.recplot2.__peakHist, h.mids)
+      
+      plot_breaks = h.breaks[-length(h.breaks)]
+      
+      gg_peak_info <- data.table(plot_breaks = rep(plot_breaks, length(peak_counts)), count = unlist(peak_counts), grp = rep(labels, each = length(plot_breaks)))
+      
+      p4 <- p4 + geom_line(data = gg_peak_info, aes(x = plot_breaks, y = count, color = grp, group = grp), inherit.aes = F, color = "red", lwd = 1.13)
+      
     })
+    
+    }
     
     p4 <- p4 + coord_flip()
     
+    if(showpeaks){
     
     try({
-      o_max <- max(table(findInterval(depth_data$count[depth_data$group_label == "depth.in"], h.breaks)))*.6
+      o_max <- max(table(findInterval(depth_data$count[depth_data$group_label == "depth.in"], h.breaks)))*.75
       x_start = 0
       
       if(length(labels) > 0){
@@ -244,6 +255,8 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
         }
       }
     })
+      
+    }
     
     seq_depth_hist <- p4
     
@@ -307,6 +320,54 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
   
 }
 
+gene_pydat_to_recplot_dat_prodigal <- function(prodigal_gene_mess){
+  
+  contigs <- names(prodigal_gene_mess)
+  
+  lengths <- unname(unlist(lapply(prodigal_gene_mess, function(x){
+    
+    return(length(x[[1]]))
+    
+  })))
+  
+  pretty_data <- data.table(contig = rep(contigs, times = lengths))
+  
+  
+  
+  
+  pretty_data[, gene_name := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    
+    return(x[[1]])
+    
+  }))) ]
+  pretty_data[, start := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    
+    return(x[[2]])
+    
+  }))) ]
+  pretty_data[, end  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    
+    return(x[[3]])
+    
+  }))) ]
+  pretty_data[, localizer :=  (start+end)/2]
+  pretty_data[, strand  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    
+    return(x[[4]])
+    
+  }))) ]
+  pretty_data[, annotation  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    
+    return(x[[5]])
+    
+  }))) ]
+  
+  
+  return(pretty_data)
+  
+  
+}
+
 #This is the GUI function
 recplot_landing_page <- function(){
   
@@ -319,6 +380,8 @@ recplot_landing_page <- function(){
     }else{
       format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
     }
+    
+    gene_choices <- c("Prodigal GFF" = "prodigal")
     
     ui <- fluidPage(
       
@@ -364,13 +427,28 @@ recplot_landing_page <- function(){
                                     actionButton('exist_db', 'Select an existing DB', icon = icon("coins")),
                                     textInput("exist_dbname",label = NULL, value = "No DB currently selected"),
                                     br(),
-                                    actionButton('add_sample', 'Add more reads?', icon = icon("file-upload")),
+                                    h4("Add More Reads"),
+                                    actionButton('add_sample', 'Select another sample to add?', icon = icon("file-upload")),
                                     textInput("add_samp",label = NULL, value = "No new sample to add."),
                                     selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
+                                    actionButton('new_samp_commit', "Add this sample to the DB", icon = icon("coins")),
+                                    br(),
+                                    br(),
+                                    h4("Add Genes"),
+                                    actionButton('add_genes', 'Add genes to database?', icon = icon("file-upload")),
+                                    textInput("add_gen", label = NULL, value = "No genes to add."),
+                                    selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices),
+                                    actionButton('genes_commit', "Add these genes to the DB", icon = icon("coins")),
+                                    
+                                    selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes")),
                                     
                                     bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
-                                    bsTooltip("add_sample", "(Optional) Add more mapped reads to the sample?", placement = "right"),
-                                    bsTooltip("fmt_add", "Select the format of the mapped reads to be added to the existing database.", placement = "right")
+                                    bsTooltip("add_sample", "(Optional) Select another set of reads mapped to the same contigs to be added to the database.", placement = "right"),
+                                    bsTooltip("fmt_add", "Select the format of the mapped reads to be added to the existing database.", placement = "right"),
+                                    bsTooltip("add_genes", "(Optional) Add genes for existing contigs.", placement = "right"),
+                                    bsTooltip("fmt_gen", "Select the format of the genes to be added to the existing database. Currently only Prodigal GFF format is supported.", placement = "right"),
+                                    bsTooltip("new_samp_commit", "Once you have selected another set of mapped reads to add and chosen the format, click this to add the sample. The sample will not be added until you do.", placement = "right"),
+                                    bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right")
                                     
                                     
                              ),
@@ -385,13 +463,13 @@ recplot_landing_page <- function(){
                            sidebarPanel(
                              width = 3,
                              
-                             h3("Choose a MAG"),
+                             h4("Choose a MAG"),
                              
                              selectInput("samples", "(1) Select a sample in the database", selected = NULL, choices = NULL),
                              
                              selectInput("mags_in_db", "(2) Select a MAG in the sample", selected = NULL, choices = NULL),
                              
-                             h3("Select Bin Resolution"),
+                             h4("Select Bin Resolution"),
                              
                              numericInput("width", "(3) Genome Resolution", min = 75, max = 5000, value = 1000),
                              
@@ -399,14 +477,16 @@ recplot_landing_page <- function(){
                              
                              numericInput("low_bound", "(5) Minimum Pct. ID", min = 50, max = 95, value = 70),
                              
-                             h3("Load Selected MAG"),
+                             h4("Load Selected MAG"),
                              
                              actionButton('get_a_mag', '(6) View Selected MAG', icon = icon("jedi-order")),
                              
-                             h3("Fine Tuning (Interactive)"),
+                             h4("Fine Tuning (Interactive)"),
                              
                              numericInput("in_group_min_stat", "(7) In-Group Pct. ID", min = 50, max = 99.5, value = 90),
-                             selectInput("linear_stat", "(8) Linear BP Histogram?", choices = c("Linear" = 1, "Logarithmic" = 2), selected = 1),
+                             selectInput("linear_stat", "(8) BP Histogram Scale", choices = c("Linear" = 1, "Logarithmic" = 2), selected = 1),
+                             
+                             checkboxInput("show_peaks", "(9) Display Depth Peaks?"),
                              
                              textInput("pdf_name", "Name and Save?"),
                              actionButton("print_stat", "Save to PDF", icon = icon("save")),
@@ -419,9 +499,12 @@ recplot_landing_page <- function(){
                              bsTooltip("get_a_mag", "Click this to load the current MAG into the viewer and plot it. Please wait for the plot to appear after clicking this. This loads the data for all tabs.", placement = "right"),
                              bsTooltip("in_group_min_stat", "Controls the lower edge of the shaded region in the recruitment plot's lower panels. Reads mapping at or above this percent identity are regarded as the \"in-group\" for the Recruitment Plot, and are represented by the dark blue lines in the upper panels.", placement = "right"),
                              bsTooltip("linear_stat", "Causes the lower right panel to display base pair counts per percent identity bin in linear scale or log scale.", placement = "right"),
-                             bsTooltip("print_stat", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to print a PDF of the current", placement = "right")
-                           ),
-                           mainPanel(
+                             bsTooltip("print_stat", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to print a PDF of the current", placement = "right"),
+                             bsTooltip("show_peaks", "Calculate and overlay peaks for the depth of coverage histogram (top right panel)", placement = "right"),
+                             
+                             bsTooltip("recplot_main", "Bottom left panel: a 2-D histogram of the counts of base pairs falling into a bin defined by position in the genome (x-axis) and percent identity (y-axis) Bins are as wide as the genome resolution parameter                             if viewing contigs, and cover genes & intergenic regions in contiguous chunks if viewing genes. The shaded section is the current in-group, which is the dark blue line on the top two plots Top left panel: Average sequencing depth for each x-axis bin on in the bottom left panel. Dark blue corresponds to depth of coverage for bins in the in-group, and light blue to the out-group. Segments at the bottom of the plot have zero coverage. Top right panel: a histogram of the depths of coverage observed in the corresponding in/out group in the sequencing depths chart (top left). If peaks are selected, they correspond to the estimates of the genome's average sequencing depth. Bottom right panel: a histogram of the number of bases falling into each percent identity bin across the entire genome, displayed in linear or log scale depending on your selection.", trigger = "click", placement = "left")
+                             ),
+                           mainPanel(id = "recplot_main",
                             #Spacing
                             fluidRow(
                               column(12,
@@ -461,7 +544,7 @@ recplot_landing_page <- function(){
                              
                              h3("Fine Tuning (Interactive)"),
                              
-                             numericInput("in_group_min_interact", "(7) In-Group Pct. ID", min = 50, max = 99.5, value = 90),
+                             numericInput("in_group_min_interact", "(7) In-Group Pct. ID", min = 50, max = 99.5, value = 95),
                              
                              bsTooltip("samples_interact", "This menu contains a list of samples within the database. Select one, and the MAGs field will be populated with the MAGs found in that sample.", placement = "right"),
                              bsTooltip("mags_in_db_interact", "This menu contains the set of MAGs in currently selected sample. Select one, then select resolution parameters.", placement = "right"),
@@ -494,8 +577,11 @@ recplot_landing_page <- function(){
       mags <- "No file selected. Try again?"
       new_samp <- "No new sample. Try again?"
       db <- "No existing database selected. Try again?"
+      new_genes <- "No genes selected. Try again?"
       
       plotting_materials <- NA
+      
+      gene_data <- NA
       
       exist_db <- "No existing database selected. Try again?"
       
@@ -596,7 +682,7 @@ recplot_landing_page <- function(){
           
           sqldb_creation(contigs = input$contig_file, mags = input$mag_file, sample_reads = list(input$read_file), map_format = input$fmt, database = paste0(input$dbname, ".db"))
           
-          print("done!")
+          cat("done!\n")
           
           output$message <- renderText(paste("Database built!"))
           
@@ -623,7 +709,7 @@ recplot_landing_page <- function(){
       observeEvent(input$add_sample,{
         
         #Add a don't-do-this if there's not a selected DB
-        if(input$exist_dbname == ""){
+        if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?"){
           output$message <- renderText("You have to select an existing database first.")
           return(NA)
         }
@@ -637,6 +723,86 @@ recplot_landing_page <- function(){
         })
         
         updateTextInput(session, "add_samp", value = new_samp)
+        
+      })
+      
+      observeEvent(input$new_samp_commit, {
+        
+        if(input$exist_dbname == "No DB currently selected" | input$exist_dbname == "No existing database selected. Try again?"){
+          output$message <- renderText("You cannot add a new sample without making a new database or choosing an existing one first.")
+          return(NA)
+        }
+        
+        if(input$add_samp == "No new sample to add." | input$add_samp == "No new sample. Try again?"){
+          
+          output$message <- renderText("You must choose a sample before committing it to the database.")
+          
+          return(NA)
+          
+        }
+        
+        
+        add_sample(input$exist_dbname, list(input$add_samp), input$fmt_add)
+        
+        cat("done!\n")
+        
+        output$message <- renderText("Sample added!")
+        
+        samples_in_db = assess_samples(input$exist_dbname)
+        
+        labels <- unlist(samples_in_db)
+        
+        samples_in_db <- unlist(samples_in_db)
+        names(samples_in_db) = labels
+        
+        updateSelectInput(session, "samples", choices = samples_in_db)
+        updateSelectInput(session, "samples_interact", choices = samples_in_db)
+        
+        
+      })
+      
+      observeEvent(input$add_genes,{
+        
+        #Add a don't-do-this if there's not a selected DB
+        if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?"){
+          output$message <- renderText("You have to select an existing database first.")
+          return(NA)
+        }
+        
+        tryCatch({
+          new_genes <- file.choose()
+        },
+        error = function(cond){
+          new_genes <- "No genes selected. Try again?"
+          return(new_genes)
+        })
+        
+        updateTextInput(session, "add_gen", value = new_genes)
+        
+      })
+      
+      observeEvent(input$genes_commit, {
+        
+        if(input$exist_dbname == "No DB currently selected" | input$exist_dbname == "No existing database selected. Try again?"){
+          output$message <- renderText("You cannot add a new sample without making a new database or choosing an existing one first.")
+          return(NA)
+        }
+        
+        if(input$add_gen == "No genes to add." | input$add_gen == "No genes selected. Try again?"){
+          
+          output$message <- renderText("You must choose genes before committing them to the database.")
+          
+          return(NA)
+          
+        }
+        
+        
+        add_genes_to_db(input$exist_dbname, input$add_gen, input$fmt_gen)
+        
+        cat("done!\n")
+        
+        output$message <- renderText("Genes added!")
+        
         
       })
       
@@ -655,12 +821,13 @@ recplot_landing_page <- function(){
             return(NA)
           })
           
+
           labels <- unlist(samples_in_db)
           
           samples_in_db <- unlist(samples_in_db)
           names(samples_in_db) = labels
           
-          }
+        }
         
         updateSelectInput(session, "samples", choices = samples_in_db)
         updateSelectInput(session, "samples_interact", choices = samples_in_db)
@@ -705,15 +872,28 @@ recplot_landing_page <- function(){
         if(input$exist_dbname == "No DB currently selected" | input$samples == "Select a sample in the database" | input$mags_in_db == "Select a MAG in the sample"){
           recplot_data <- data.frame(placeholder = 1)
         }else{
-          recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
+          
+          if(input$task == "contigs"){
+            recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
+          }else{
+            recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, input$low_bound)
+            gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
+            
+          }
+          
           contig_names <- unlist(get_contig_names(input$exist_dbname, input$mags_in_db))
           
           plotting_materials <<- pydat_to_recplot_dat(recplot_data, contig_names)
           
           cat("done!\n")
           
-          updateNumericInput(session, "in_group_min_stat", value = 95)
-          updateNumericInput(session, "in_group_min_interact", value = 95)
+          old_value <- input$in_group_min_stat
+          
+          updateNumericInput(session, "in_group_min_stat", value = old_value-1)
+          updateNumericInput(session, "in_group_min_interact", value = old_value-1)
+          
+          updateNumericInput(session, "in_group_min_stat", value = old_value)
+          updateNumericInput(session, "in_group_min_interact", value = old_value)
           
         }
         
@@ -723,14 +903,25 @@ recplot_landing_page <- function(){
         if(input$exist_dbname == "No DB currently selected" | input$samples == "Select a sample in the database" | input$mags_in_db == "Select a MAG in the sample"){
           recplot_data <- data.frame(placeholder = 1)
         }else{
-          recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
+          
+          if(input$task == "contigs"){
+            recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
+          }else{
+            recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, input$low_bound)
+            gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
+          }
+          
           contig_names <- unlist(get_contig_names(input$exist_dbname, input$mags_in_db))
           
           plotting_materials <<- pydat_to_recplot_dat(recplot_data, contig_names)
           
+          old_value <- input$in_group_min_stat
           
-          updateNumericInput(session, "in_group_min_stat", value = 95)
-          updateNumericInput(session, "in_group_min_interact", value = 95)
+          updateNumericInput(session, "in_group_min_stat", value = old_value-1)
+          updateNumericInput(session, "in_group_min_interact", value = old_value-1)
+          
+          updateNumericInput(session, "in_group_min_stat", value = old_value)
+          updateNumericInput(session, "in_group_min_interact", value = old_value)
           
           cat("done!\n")
           
@@ -831,7 +1022,8 @@ recplot_landing_page <- function(){
                                           in_grp_min = input$in_group_min_stat,
                                           id_break = input$height,
                                           width = input$width,
-                                          linear = input$linear_stat
+                                          linear = input$linear_stat,
+                                          showpeaks = input$show_peaks
         )
         
         return(static_plot)
@@ -857,27 +1049,56 @@ recplot_landing_page <- function(){
         
         base$bp_count <- base$bp_count*(input$width/widths)
         
-        p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
-                                                                                               "\nPos. in Contig: ", Start, "-", End,
-                                                                                               "\nNorm. Bin Count: ", bp_count)))+ 
-          scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
-          ylab("Percent Identity") +
-          xlab(paste("Position in Genome", bp_unit)) +
-          scale_y_continuous(expand = c(0, 0)) +
-          scale_x_continuous(expand = c(0, 0)) +
-          theme(legend.position = "none", 
-                axis.line = element_line(colour = "black"),
-                axis.title = element_text(size = 14),
-                axis.text = element_text(size = 14)) +
-          annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
-                   ymin = input$in_group_min_interact, 
-                   ymax = 100, fill = "darkblue", alpha = .15)+
-          geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40") +
-          geom_raster()
-        
+        if(input$task == "contigs"){
+          p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
+                                                                                                 "\nPos. in Contig: ", Start, "-", End,
+                                                                                                 "\nNorm. Bin Count: ", round(bp_count))))+ 
+            scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
+            ylab("Percent Identity") +
+            xlab(paste("Position in Genome", bp_unit)) +
+            scale_y_continuous(expand = c(0, 0)) +
+            scale_x_continuous(expand = c(0, 0)) +
+            theme(legend.position = "none", 
+                  axis.line = element_line(colour = "black"),
+                  axis.title = element_text(size = 14),
+                  axis.text = element_text(size = 14)) +
+            annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
+                     ymin = input$in_group_min_interact, 
+                     ymax = 100, fill = "darkblue", alpha = .15)+
+            geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40") +
+            geom_raster()
+        }else{
+          
+          base[, gene_id := "Non-Genic"]
+          base[, gene_start := "N/A"]
+          base[, gene_end := ""]
+          base[, strand := "N/A"]
+          base[, annotation := "N/A"]
+          
+          matcher <- base[, list(unique(Start), unique(End)), by = contig]
+          
+          
+          p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
+                                                                                                 "\nPos. in Contig: ", Start, "-", End,
+                                                                                                 "\nNorm. Bin Count: ", round(bp_count))))+ 
+            scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
+            ylab("Percent Identity") +
+            xlab(paste("Position in Genome", bp_unit)) +
+            scale_y_continuous(expand = c(0, 0)) +
+            scale_x_continuous(expand = c(0, 0)) +
+            theme(legend.position = "none", 
+                  axis.line = element_line(colour = "black"),
+                  axis.title = element_text(size = 14),
+                  axis.text = element_text(size = 14)) +
+            annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
+                     ymin = input$in_group_min_interact, 
+                     ymax = 100, fill = "darkblue", alpha = .15)+
+            geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40") +
+            geom_raster()
+        }
         
         read_rec_plot <- ggplotly(p, dynamicTicks = T, tooltip = c("text")) %>% 
-          layout(plot_bgcolor = "#EEF7FA") %>% 
+          layout(plot_bgcolor = "grey90") %>% 
           style(hoverinfo = "none", traces = c(1, 2)) 
         
         return(read_rec_plot)
@@ -899,8 +1120,8 @@ recplot_landing_page <- function(){
         
         setkeyv(base, c("group_label", "seq_pos"))
         
-        depth_data <- base[, sum(bp_count/(End-Start+1)), by = key(base)]
-        colnames(depth_data)[3] = "count"
+        depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
+        colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
         
         group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
         
@@ -913,9 +1134,13 @@ recplot_landing_page <- function(){
         
         depth_data$count[depth_data$count == 0] <- NA
         
-        seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Seq. Depth: ", count)))+
+        if(input$task == "contigs"){
+        
+        seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
+                                                                                                                                 "\nPos. in Contig: ", Start, "-", End,
+                                                                                                                      "\nSeq. Depth: ", round(count))))+
           geom_step(alpha = 0.75) +
-          #scale_y_continuous(trans = "log10") +
+          scale_y_continuous(trans = "log10") +
           scale_x_continuous(expand=c(0,0))+
           theme(legend.position = "none", 
                 panel.border = element_blank(), 
@@ -928,15 +1153,45 @@ recplot_landing_page <- function(){
                 axis.title = element_text(size = 14),
                 axis.text = element_text(size = 14)) +
           scale_color_manual(values = group.colors) +
-          ylab("Depth")
+          ylab("Log 10 Depth")
+        }else{
+          
+          
+          depth_data[, gene_id := "Non-Genic"]
+          depth_data[, gene_start := "N/A"]
+          depth_data[, gene_end := ""]
+          depth_data[, strand := "N/A"]
+          depth_data[, annotation := ""]
+          
+          seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
+                                                                                                                                   "\nPos. in Contig: ", Start, "-", End,
+                                                                                                                                   "\nSeq. Depth: ", round(count))))+
+            geom_step(alpha = 0.75) +
+            scale_y_continuous(trans = "log10") +
+            scale_x_continuous(expand=c(0,0))+
+            theme(legend.position = "none", 
+                  panel.border = element_blank(), 
+                  panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(), 
+                  axis.line = element_line(colour = "black"), 
+                  panel.background = element_blank(), 
+                  axis.title.x = element_blank(), 
+                  #axis.text.y = element_text(angle = 90, hjust = 0.5),
+                  axis.title = element_text(size = 14),
+                  axis.text = element_text(size = 14)) +
+            scale_color_manual(values = group.colors) +
+            ylab("Log 10 Depth")
+          
+        }
         
         a <- list(
+          range = c(10^min(depth_data$count, na.rm = T), 10^max(depth_data$count, na.rm = T)),
           showticklabels = TRUE,
           exponentformat = "e"
         )
         
         seq_depth_chart <- ggplotly(seq_depth_chart, dynamicTicks = T, tooltip = c("text")) %>% 
-          layout(plot_bgcolor = "white", yaxis = a)
+          layout(plot_bgcolor = "grey90", yaxis = a)
         
         
         return(seq_depth_chart)
@@ -985,4 +1240,47 @@ recplot_landing_page <- function(){
 
 recplot_landing_page()
 
+#testing peaks
+#setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
+#source_python("recplot_database_carlos_genes.py")
+
+#db <- "Nouveau.db"
+
+#genes <- "genes.fa"
+
+#samps <- assess_samples(db)[[1]][[1]]
+
+#mags <- assess_MAGs(db, samps)[[1]][[1]]
+
+#contigs <- unlist(get_contig_names(db, mags))
+
+#recplot_raw <- extract_genes_MAG_for_R(db, samps, mags, 0.5, 70)
+
+#recplot_list <- pydat_to_recplot_dat(recplot_raw, contigs)
+
+#base <- recplot_list[[1]]
+#bp_unit <- recplot_list[[2]]
+#bp_div <- recplot_list[[3]]
+#pos_max <- recplot_list[[4]]
+#in_grp_min <- 95
+#id_break <- 0.5
+#width <- 1000
+#linear <- 1
+
+#create_static_plot(base, bp_unit, bp_div, pos_max, 95, 0.5, 1000, 1, showpeaks = F)
+
+
+#parse_prodigal_genes(genes)
+
+#add_genes_to_db(db, genes, "prodigal")
+
+#add_sample(db, list("test_sam.sam"), "sam")
+
+
+#source_python("recplot_database_carlos_genes.py")
+#hide_the_print <- prepare_matrices_genes(db, "GS3.D25", 1000, 0.5, 70)
+
+#a_gene_mag <- extract_genes_MAG_for_R(db, "C:\\Users\\Kenji\\Desktop\\Recplot4\\recplot_final_build\\test_sam _2.sam", "GS3.D25", 0.5, 70)
+  
+#fmt <- pydat_to_recplot_dat(a_gene_mag)
 
