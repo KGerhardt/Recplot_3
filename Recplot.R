@@ -19,6 +19,11 @@ use_python("/usr/local/bin/python")
 #This certainly makes the script accessible...
 source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
 
+#testing peaks
+setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
+source_python("recplot_database_carlos_genes.py")
+
+
 ##############################################
 #The python import is a space-efficient, but strcutrually awkward data object
 #List of 2 items: list of lists of contig starts, stops, assoc. counts per %ID bin, and %ID bins.
@@ -334,23 +339,24 @@ gene_pydat_to_recplot_dat_prodigal <- function(prodigal_gene_mess){
   
   
   
-  
   pretty_data[, gene_name := unname(unlist(lapply(prodigal_gene_mess, function(x){
     
     return(x[[1]])
     
   }))) ]
-  pretty_data[, start := unname(unlist(lapply(prodigal_gene_mess, function(x){
+  
+  pretty_data[, gene_start := unname(unlist(lapply(prodigal_gene_mess, function(x){
     
     return(x[[2]])
     
   }))) ]
-  pretty_data[, end  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+  
+  pretty_data[, gene_end := unname(unlist(lapply(prodigal_gene_mess, function(x){
     
     return(x[[3]])
     
   }))) ]
-  pretty_data[, localizer :=  (start+end)/2]
+
   pretty_data[, strand  := unname(unlist(lapply(prodigal_gene_mess, function(x){
     
     return(x[[4]])
@@ -1069,18 +1075,25 @@ recplot_landing_page <- function(){
             geom_raster()
         }else{
           
-          base[, gene_id := "Non-Genic"]
-          base[, gene_start := "N/A"]
-          base[, gene_end := ""]
-          base[, strand := "N/A"]
-          base[, annotation := "N/A"]
+          ratio <- nrow(base)/nrow(gene_data)
           
-          matcher <- base[, list(unique(Start), unique(End)), by = contig]
+          setkeyv(base, c("contig", "Start"))
+          setkey(gene_data, "contig")
           
+          base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+          base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+          base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+          base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+          base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+
           
           p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
                                                                                                  "\nPos. in Contig: ", Start, "-", End,
-                                                                                                 "\nNorm. Bin Count: ", round(bp_count))))+ 
+                                                                                                 "\nNorm. Bin Count: ", round(bp_count),
+                                                                                                 "\nGene ID: ", gene_name,
+                                                                                                 "\nGene Range: ", gene_start, "-", gene_end,
+                                                                                                 "\nGene Strand: ", gene_strand,
+                                                                                                 "\nAnnotation: ", gene_annotation)))+ 
             scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
             ylab("Percent Identity") +
             xlab(paste("Position in Genome", bp_unit)) +
@@ -1138,7 +1151,7 @@ recplot_landing_page <- function(){
         
         seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
                                                                                                                                  "\nPos. in Contig: ", Start, "-", End,
-                                                                                                                      "\nSeq. Depth: ", round(count))))+
+                                                                                                                                 "\nSeq. Depth: ", round(count))))+
           geom_step(alpha = 0.75) +
           scale_y_continuous(trans = "log10") +
           scale_x_continuous(expand=c(0,0))+
@@ -1156,16 +1169,26 @@ recplot_landing_page <- function(){
           ylab("Log 10 Depth")
         }else{
           
+          setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+          setkey(gene_data, "contig")
           
-          depth_data[, gene_id := "Non-Genic"]
-          depth_data[, gene_start := "N/A"]
-          depth_data[, gene_end := ""]
-          depth_data[, strand := "N/A"]
-          depth_data[, annotation := ""]
+          gene_data <- rbind(gene_data, gene_data)
+          
+          depth_data[, gene_name := gene_data$gene_name]
+          depth_data[, gene_start := gene_data$gene_start]
+          depth_data[, gene_end := gene_data$gene_end]
+          depth_data[, gene_strand := gene_data$strand]
+          depth_data[, gene_annotation := gene_data$annotation]
+          
+          setkeyv(depth_data, c("group_label", "seq_pos"))
           
           seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
                                                                                                                                    "\nPos. in Contig: ", Start, "-", End,
-                                                                                                                                   "\nSeq. Depth: ", round(count))))+
+                                                                                                                                   "\nNorm. Bin Count: ", round(count),
+                                                                                                                                   "\nGene ID: ", gene_name,
+                                                                                                                                   "\nGene Range: ", gene_start, "-", gene_end,
+                                                                                                                                   "\nGene Strand: ", gene_strand,
+                                                                                                                                   "\nAnnotation: ", gene_annotation)))+
             geom_step(alpha = 0.75) +
             scale_y_continuous(trans = "log10") +
             scale_x_continuous(expand=c(0,0))+
@@ -1240,19 +1263,15 @@ recplot_landing_page <- function(){
 
 recplot_landing_page()
 
-#testing peaks
-#setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
-#source_python("recplot_database_carlos_genes.py")
-
-#db <- "Nouveau.db"
+db <- "Nouveau.db"
 
 #genes <- "genes.fa"
 
-#samps <- assess_samples(db)[[1]][[1]]
+samps <- assess_samples(db)[[1]][[1]]
 
-#mags <- assess_MAGs(db, samps)[[1]][[1]]
+mags <- assess_MAGs(db, samps)[[1]][[1]]
 
-#contigs <- unlist(get_contig_names(db, mags))
+contigs <- unlist(get_contig_names(db, mags))
 
 #recplot_raw <- extract_genes_MAG_for_R(db, samps, mags, 0.5, 70)
 
@@ -1280,7 +1299,23 @@ recplot_landing_page()
 #source_python("recplot_database_carlos_genes.py")
 #hide_the_print <- prepare_matrices_genes(db, "GS3.D25", 1000, 0.5, 70)
 
-#a_gene_mag <- extract_genes_MAG_for_R(db, "C:\\Users\\Kenji\\Desktop\\Recplot4\\recplot_final_build\\test_sam _2.sam", "GS3.D25", 0.5, 70)
+a_gene_mag <- extract_genes_MAG_for_R(db, "C:\\Users\\Kenji\\Desktop\\Recplot4\\recplot_final_build\\test_sam _2.sam", "GS3.D25", 0.5, 70)
   
+prodigal_gene_mess <- a_gene_mag[[3]]
+names(prodigal_gene_mess) = contigs
+
+tester <- gene_pydat_to_recplot_dat_prodigal(prodigal_gene_mess)
+
+
+recplot_list <- pydat_to_recplot_dat(a_gene_mag, contigs)
+
+base <- recplot_list[[1]]
+
+ratio <- nrow(base)/nrow(tester)
+
+gene_data_expand <- tester[,rep(row.names(tester), ratio), 2:6]
+
+setDT(tester)[ ,list(ratio=rep(1,ratio)), by=c("contig","gene_name",  "gene_start", "gene_end",   "strand",  "annotation")][ ,ratio := NULL][]
+
 #fmt <- pydat_to_recplot_dat(a_gene_mag)
 

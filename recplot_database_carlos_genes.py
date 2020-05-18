@@ -124,7 +124,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # Read read mapping file for each sample and fill corresponding table
     for sample_name, mapping_file in sampleid_to_sample.items():
         mags_in_sample = []
-        #print("Parsing {}... ".format(mapping_file), end = "",flush = True)
+        print("Parsing {}... ".format(mapping_file), end = "",flush = True)
         contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn)
         cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
         all_contigs = cursor.fetchall()
@@ -703,6 +703,7 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
 	
 	#Final data structures initialization
     matrix = {}
+    annotation_matrix = {}
 	
     #Since genes are separated, id_len can be iterated through to give a length of contig for each and all the assoc. gene data can be accessed by name
     
@@ -712,7 +713,19 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
 		#These are the starts and ends of each gene on this contig
         starts = gene_matrix[str(contig_names[id_len[0]-1])][1][:]
         ends = gene_matrix[str(contig_names[id_len[0]-1])][2][:]
-        		
+		
+        gene_names = gene_matrix[str(contig_names[id_len[0]-1])][0][:]
+        strand = gene_matrix[str(contig_names[id_len[0]-1])][3][:]
+        annotation = gene_matrix[str(contig_names[id_len[0]-1])][4][:]
+		
+        final_gene_names = []
+        final_gene_strands = []
+        final_gene_annots = []
+		#I shove around the starts/ends of overlapping genes to make sure that they no longer do, but that also means that 
+		#the start/stop used for plotting is not guaranteed to be the real start/stop. I save the true ones here.
+        final_gene_starts = []
+        final_gene_ends = []
+
         pct_id_counts = []
         
         contig_length = id_len[1]
@@ -723,6 +736,22 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
 		#We want to see the genes in the context of the contig, so we have to add bins for all intergenic regions
 		#This loop starts with 1 and creates a bin end based on the next gene start, then adds the gene's start and end, then adds a new start based on the gene's end
         for i in range(0, len(starts)):
+			#We have to pad out the annotation information with blanks for the intergenic bins - 
+			#determining their locations is easiest done alongside the initial creation of the bins rather than awkwardly afterwards
+			
+			#blanks
+            final_gene_names.append("N/A")
+            final_gene_strands.append("N/A")
+            final_gene_annots.append("N/A")
+            final_gene_starts.append("N/A")
+            final_gene_ends.append("N/A")
+			#actual gene info
+            final_gene_names.append(gene_names[i])
+            final_gene_strands.append(strand[i])
+            final_gene_annots.append(annotation[i])
+            final_gene_starts.append(str(starts[i]))
+            final_gene_ends.append(str(ends[i]))
+			#starts and stops added here
             final_ends.append(starts[i]-1)
             final_starts.append(starts[i])
             final_ends.append(ends[i])
@@ -731,18 +760,42 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
 		#Caps the ends with the end of the contig
         final_ends.append(contig_length)
 		
+		#Finishes out the annotaion list - the last bin is always declared as non-genic, and it gets removed if that's untrue.
+        final_gene_names.append("N/A")
+        final_gene_strands.append("N/A")
+        final_gene_annots.append("N/A")
+        final_gene_starts.append("N/A")
+        final_gene_ends.append("N/A")
+		
 		#If a gene starts at 1, then there should be a 1, 0 pair in the first position of the final starts/ends and the bin is unnecessary. This removes those
         if final_ends[0] < 1:
             del final_starts[0]
             del final_ends[0]
+            del final_gene_annots[0]
+            del final_gene_names[0]
+            del final_gene_strands[0]
+            del final_gene_starts[0]
+            del final_gene_ends[0]		
 			
 		#If a gene terminates at the end of the contig, then the final start would be contig length + 1 and the bin is unnecessary. This removes those
         if final_starts[len(final_starts)-1] > final_ends[len(final_starts)-1]:
             del final_starts[len(final_starts)-1]
             del final_ends[len(final_starts)-1]
+            del final_gene_annots[len(final_starts)-1]
+            del final_gene_names[len(final_starts)-1]
+            del final_gene_strands[len(final_starts)-1]
+            del final_gene_starts[len(final_starts)-1]
+            del final_gene_ends[len(final_starts)-1]
+
+			
 		
         starts = []
         ends = []
+        gene_names = []
+        strand = []
+        annotation = []
+        annot_start = []
+        annot_end = []
 		#If genes overlap, two problems are created:
 		# (1) Intergenic region will have end >= start
 		# (2) The end of the first overlapping gene will be <= the start of the second
@@ -752,6 +805,11 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
             if final_ends[i] >= final_starts[i]:
                 starts.append(final_starts[i])
                 ends.append(final_ends[i])
+                gene_names.append(final_gene_names[i])
+                strand.append(final_gene_strands[i])
+                annotation.append(final_gene_annots[i])
+                annot_start.append(final_gene_starts[i])
+                annot_end.append(final_gene_ends[i])				
             else:
                 midpt = int((final_ends[i-1] + final_starts[i+1])/2)
                 #last element added was final_ends[i-1], and this is what needs updated
@@ -769,9 +827,11 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
         
 		#Add them to the data item
         matrix[id_len[0]] = [starts, ends, pct_id_counts]
+        annotation_matrix[id_len[0]] = [gene_names, annot_start, annot_end, strand, annotation]
+
         
     print("done!")
-    return(mag_id, matrix, id_breaks, gene_matrix)
+    return(mag_id, matrix, id_breaks, annotation_matrix)
 	
 #This function orchestrates calls to prepare_matrices and fill_matrices. 
 #Translations between R and python through reticulate are inefficient and may cause errors with data typing.
