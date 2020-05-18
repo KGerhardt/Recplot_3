@@ -11,7 +11,7 @@ import platform
 if platform.system() == "Windows":
     print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
 else:
-    import pysam
+    #import pysam
 
 def get_sys():
     return(platform.system())
