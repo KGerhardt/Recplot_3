@@ -9,7 +9,7 @@ from sys import argv
 import platform
 
 if platform.system() == "Windows":
-    print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
+    #print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
 else:
     import pysam
 
@@ -29,7 +29,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     
     # ===== Database and table creation =====
     # Create or open database
-    print("Creating database...")
+    #print("Creating database...")
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
     # Create lookup table (always creates a new one)
@@ -124,7 +124,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # Read read mapping file for each sample and fill corresponding table
     for sample_name, mapping_file in sampleid_to_sample.items():
         mags_in_sample = []
-        print("Parsing {}... ".format(mapping_file), end = "",flush = True)
+        #print("Parsing {}... ".format(mapping_file), end = "",flush = True)
         contigs_in_sample = save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn)
         cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
         all_contigs = cursor.fetchall()
@@ -139,7 +139,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
         mags_in_sample = [(mapping_file, x) for x in mags_in_sample]
         cursor.executemany('INSERT INTO mags_per_sample VALUES(?, ?)', mags_in_sample)
         conn.commit()
-        print("Database creation finished!")
+        #print("Database creation finished!")
     cursor.close()
     conn.commit()
     conn.close()
@@ -167,7 +167,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     
     # Read mapping files and fill sample tables
     if map_format == "blast":
-        print("Parsing tabular BLAST format reads... ", end = "", flush = True)
+        #print("Parsing tabular BLAST format reads... ", end = "", flush = True)
         with open(mapping_file) as input_reads:
             record_counter = 0
             records = []
@@ -208,7 +208,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
             cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
             
     if map_format == "sam":
-        print("Parsing SAM format reads... ", end = "", flush = True)
+        #print("Parsing SAM format reads... ", end = "", flush = True)
         record_counter = 0
         records = []
         with open(mapping_file) as input_reads:
@@ -262,7 +262,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
             cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
     
     if map_format == "bam":
-        print("Parsing BAM format reads... ", end = "", flush = True)
+        #print("Parsing BAM format reads... ", end = "", flush = True)
         record_counter = 0
         records = []
         
@@ -318,11 +318,11 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
                     mag_id = contig_mag_corresp[contig_ref][1]
                     contig_id = contig_mag_corresp[contig_ref][2]
                     
-                    #print(mag_id, contig_id)
+                    ##print(mag_id, contig_id)
                     
                     records.append((mag_id, contig_id, pct_id, start, end))
                     
-                    #print(*records)
+                    ##print(*records)
                     
                     record_counter += 1
         # Commit remaining records
@@ -333,7 +333,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
         # Create index for faster access
         cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
     conn.commit()
-    print("done!")
+    #print("done!")
     return contigs_in_sample
 
 
@@ -362,7 +362,7 @@ def add_sample(database, new_mapping_files, map_format):
         # Check if new sample exists
         mags_in_sample = []
         if new_sample in samples_dict:
-            print("Dropping {} table and re-building it".format(new_sample))
+            #print("Dropping {} table and re-building it".format(new_sample))
             sample_name = samples_dict[new_sample]
             # If it does, drop the reads that table from that sample and re-build it
             cursor.execute('DROP TABLE IF EXISTS ' + sample_name)
@@ -370,7 +370,7 @@ def add_sample(database, new_mapping_files, map_format):
                 ' (mag_id INTEGER, contig_id INTEGER, identity FLOAT, start INTEGER, stop INTEGER)')
             cursor.execute('DELETE FROM mags_per_sample WHERE sample_name = ?', (new_sample,))
             conn.commit()
-            print("Adding {}... ".format(new_sample))
+            #print("Adding {}... ".format(new_sample))
             contigs_in_sample = save_reads_mapped(new_sample, sample_name, map_format, cursor, conn)
             cursor.execute('SELECT contig_name, mag_name, mag_id FROM lookup_table')
             all_contigs = cursor.fetchall()
@@ -389,7 +389,7 @@ def add_sample(database, new_mapping_files, map_format):
 
         else:
             # Otherwise create the new table and add the read information
-            print("Adding {} to existing database {}... ".format(new_sample, database))
+            #print("Adding {} to existing database {}... ".format(new_sample, database))
             sample_name = "sample_" + str(last_sample + 1)
             last_sample += 1
             cursor.execute('CREATE TABLE ' + sample_name + \
@@ -413,7 +413,7 @@ def add_sample(database, new_mapping_files, map_format):
             new_record = (new_sample, sample_name, last_sample)
             cursor.execute('INSERT INTO sample_info VALUES(?, ?, ?)', new_record)
             conn.commit()
-        print("Done")
+        #print("Done")
         conn.commit()
     conn.close()
 
@@ -472,7 +472,7 @@ def read_contigs(contig_file_name):
     Returns:
         [dict] -- Dictionary with ids and sizes
     """
-    print("Reading contigs... ", end="", flush=True)
+    #print("Reading contigs... ", end="", flush=True)
     
     contig_sizes = {}
     contig_length = 0
@@ -500,7 +500,7 @@ def read_contigs(contig_file_name):
     #The loop never gets to commit on the final iteration, so this statement adds the last contig.
     contig_sizes[current_contig] = contig_length
     
-    print("done!")
+    #print("done!")
     return contig_sizes
 
 def get_mags(mag_file):
@@ -536,7 +536,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
         matrix [dict] -- Dictionary with list of arrays of start and stop positions
                          and filled matrix to plot.
     """
-    print("Filling matrices...", end = "",flush = True)
+    #print("Filling matrices...", end = "",flush = True)
     # Retrieve sample_id from sample_name provided
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
@@ -562,9 +562,9 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
             read_stop = read_mapped[4]
             read_len = read_stop - read_start + 1
             read_id_index = bisect.bisect_right(id_breaks, read_mapped[2]) - 1
-            # print(read_mapped)
-            # print(id_breaks)
-            # print(read_id_index, id_breaks[read_id_index])
+            # #print(read_mapped)
+            # #print(id_breaks)
+            # #print(read_id_index, id_breaks[read_id_index])
             read_start_loc = bisect.bisect_left(matrices[contig_id][1], read_start)
             read_stop_loc = bisect.bisect_left(matrices[contig_id][1], read_stop)
             # If the read falls entirely on a bin add all bases to the bin
@@ -580,14 +580,14 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
                         read_len = overflow
                     else :
                         matrices[contig_id][2][j][read_id_index] += read_len
-    print("done!")
-	#print("done!", read_counter, "reads collected!")
+    #print("done!")
+	##print("done!", read_counter, "reads collected!")
     return matrices
 
 #The purpose of this function is to prepare an empty recplot matrix from a set of contig names and lengths associated with one MAG
 def prepare_matrices(database, mag_name, width, bin_height, id_lower):
     #Prep percent identity breaks - always starts at 100 and proceeds down by bin_height steps until it cannot do so again without passing id_lower
-    print("Preparing recruitment matrices...", end="", flush=True)
+    #print("Preparing recruitment matrices...", end="", flush=True)
     # Prep percent identity breaks - always starts at 100 and proceeds 
     # down by bin_height steps until it cannot do so again without passing id_lower
     id_breaks = []
@@ -645,13 +645,13 @@ def prepare_matrices(database, mag_name, width, bin_height, id_lower):
         
         matrix[id_len[0]] = [starts, ends, pct_id_counts]
         
-    print("done!")
+    #print("done!")
 
     return(mag_id, matrix, id_breaks)
 
 def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
     #Prep percent identity breaks - always starts at 100 and proceeds down by bin_height steps until it cannot do so again without passing id_lower
-    print("Preparing recruitment matrices...", end="", flush=True)
+    #print("Preparing recruitment matrices...", end="", flush=True)
     # Prep percent identity breaks - always starts at 100 and proceeds 
     # down by bin_height steps until it cannot do so again without passing id_lower
     id_breaks = []
@@ -830,14 +830,14 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
         annotation_matrix[id_len[0]] = [gene_names, annot_start, annot_end, strand, annotation]
 
         
-    print("done!")
+    #print("done!")
     return(mag_id, matrix, id_breaks, annotation_matrix)
 	
 #This function orchestrates calls to prepare_matrices and fill_matrices. 
 #Translations between R and python through reticulate are inefficient and may cause errors with data typing.
 #Constraining the transfers to arguments passed from R and a return passed from python alleviates these issues.
 def extract_MAG_for_R(database, sample, mag_name, width, bin_height, id_lower):
-    print("Making recruitment matrix for:", mag_name, "in sample:", sample)
+    #print("Making recruitment matrix for:", mag_name, "in sample:", sample)
     mag_id, matrix, id_breaks = prepare_matrices(database, mag_name, width, bin_height, id_lower)
     
     matrix = fill_matrices(database, mag_id, sample, matrix, id_breaks)
@@ -845,7 +845,7 @@ def extract_MAG_for_R(database, sample, mag_name, width, bin_height, id_lower):
     return(matrix, id_breaks)
     
 def extract_genes_MAG_for_R(database, sample, mag_name, bin_height, id_lower):
-    print("Making recruitment matrix for:", mag_name, "in sample:", sample)
+    #print("Making recruitment matrix for:", mag_name, "in sample:", sample)
     mag_id, matrix, id_breaks, gene_table = prepare_matrices_genes(database, mag_name, bin_height, id_lower)
     
     matrix = fill_matrices(database, mag_id, sample, matrix, id_breaks)
@@ -855,7 +855,7 @@ def extract_genes_MAG_for_R(database, sample, mag_name, bin_height, id_lower):
 	
 #This function queries the database and returns the names of all of the samples present within it
 def assess_samples(database):
-    print("Acquiring samples in "+ database)
+    #print("Acquiring samples in "+ database)
 	# Retrieve sample_id from sample_name provided
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
@@ -873,7 +873,7 @@ def assess_samples(database):
 
 #This function queries the database and returns the MAGs covered by a given sample.    
 def assess_MAGs(database, sample):
-    print("Acquiring MAGs in "+sample)
+    #print("Acquiring MAGs in "+sample)
 	# Retrieve sample_id from sample_name provided
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
@@ -908,7 +908,7 @@ def add_genes_to_db(database, genes_file, gene_format):
     if(gene_format == "prodigal"):
         gene_information = parse_prodigal_genes(genes_file)
     else:
-        print("I don't do that yet")
+        #print("I don't do that yet")
 	
     add_gene_information(database, gene_information)
 #add_gene_annotation(database, annotation)
