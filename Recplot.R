@@ -20,8 +20,8 @@ use_python("/usr/local/bin/python")
 source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
 
 #testing peaks
-setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
-source_python("recplot_database_carlos_genes.py")
+#setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/")
+#source_python("recplot_database_carlos_genes.py")
 
 
 ##############################################
