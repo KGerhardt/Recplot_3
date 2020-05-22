@@ -12,6 +12,23 @@ if platform.system() == "Windows":
     print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
 else:
     import pysam
+	
+def parse_to_mags_identical(contig_file_name, out_file_name):
+    
+    contigs =  open(contig_file_name, 'r')
+	
+    mags = open(out_file_name, "w")
+    
+    for line in contigs:
+        if line[0] == ">":
+            #set to new contig. One final loop of starts ends counts is needed
+            current_contig = line[1:].strip().split()[0]
+            print(current_contig, current_contig, sep = "\t", file = mags)
+		
+    contigs.close()
+    
+    mags.close()
+    return("")
 
 def get_sys():
     return(platform.system())
@@ -327,7 +344,6 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     conn.commit()
     return contigs_in_sample
 
-
 def add_sample(database, new_mapping_files, map_format):
     contig_mag_corresp = {}
     samples_dict = {}
@@ -404,7 +420,6 @@ def add_sample(database, new_mapping_files, map_format):
         conn.commit()
     conn.close()
 
-
 def parse_prodigal_genes(prodigal_gff):
     gene_info = []
     with open(prodigal_gff, 'r') as prodigal_genes:
@@ -423,7 +438,6 @@ def parse_prodigal_genes(prodigal_gff):
                 gene_info.append((contig, gene_id, start, end, strand, annotation))
     return gene_info
 
-
 def add_gene_information(database, gene_info):
     conn = sqlite3.connect(database)
     cursor = conn.cursor()
@@ -433,7 +447,6 @@ def add_gene_information(database, gene_info):
     cursor.execute("begin")
     cursor.executemany('INSERT INTO gene_info VALUES(?, ?, ?, ?, ?, ?)', gene_info)
     cursor.execute("commit")
-
 
 def add_gene_annotation(database, annotation):
     annotations = []
