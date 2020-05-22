@@ -7,15 +7,22 @@ library(cowplot)
 library(enveomics.R)
 library(shinyBS)
 
+#install.packages(c("reticulate", "ggplot2", "shiny", "data.table", "plotly", "cowplot", "enveomics.R", "shinyBS"))
+
 #use_condaenv()
-use_python("/usr/local/bin/python")
+#use_python("/usr/local/bin/python")
+
+py_discover_config()
+conda_list()
+
+#Replace the condaenv with the env you created
+use_condaenv("Recruitment_Plot_Testing", required = T)
+
 
 ###########################Development variables
 
 #Main script
 source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
-
-#MAGs support script
 
 
 ##############################################
@@ -410,7 +417,7 @@ recplot_UI <- function(){
                                     textInput("mag_file",label = NULL, value = "No MAGs file selected."),
                                     br(),
                                     
-
+                                    
                                     textInput("dbname",label = "(4) Name the database", value = "Enter name here."),
                                     br(),
                                     actionButton('db' , "(5) Create database", icon("coins")),
@@ -438,47 +445,47 @@ recplot_UI <- function(){
                   
                   tabPanel("Database Management",
                            fluidRow(
-                           column(1),
-                           column(5, 
-                                  h2("Work with an existing database"),
-                                  br(),
-                                  actionButton('exist_db', 'Select an existing DB', icon = icon("coins")),
-                                  textInput("exist_dbname",label = NULL, value = "No DB currently selected"),
-                                  br(),
-                                  h4("Add More Reads"),
-                                  actionButton('add_sample', 'Select another sample to add?', icon = icon("file-upload")),
-                                  textInput("add_samp",label = NULL, value = "No new sample to add."),
-                                  selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
-                                  actionButton('new_samp_commit', "Add this sample to the DB", icon = icon("coins")),
-                                  br(),
-                                  br(),
-                                  h4("Add Genes"),
-                                  actionButton('add_genes', 'Add genes to database?', icon = icon("file-upload")),
-                                  textInput("add_gen", label = NULL, value = "No genes to add."),
-                                  selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices),
-                                  actionButton('genes_commit', "Add these genes to the DB", icon = icon("coins")),
-                                  
-                                  selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes")),
-                                  
-                                  bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
-                                  bsTooltip("add_sample", "(Optional) Select another set of reads mapped to the same contigs to be added to the database.", placement = "right"),
-                                  bsTooltip("fmt_add", "Select the format of the mapped reads to be added to the existing database.", placement = "right"),
-                                  bsTooltip("add_genes", "(Optional) Add genes for existing contigs.", placement = "right"),
-                                  bsTooltip("fmt_gen", "Select the format of the genes to be added to the existing database. Currently only Prodigal GFF format is supported.", placement = "right"),
-                                  bsTooltip("new_samp_commit", "Once you have selected another set of mapped reads to add and chosen the format, click this to add the sample. The sample will not be added until you do.", placement = "right"),
-                                  bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right")
-                                  
-                                  
-                           ),
-                           
-                           column(5,
-                                  h2("Database Status"),
-                                  verbatimTextOutput("message2")
-                           ),
-                           column(1)
-
+                             column(1),
+                             column(5, 
+                                    h2("Work with an existing database"),
+                                    br(),
+                                    actionButton('exist_db', 'Select an existing DB', icon = icon("coins")),
+                                    textInput("exist_dbname",label = NULL, value = "No DB currently selected"),
+                                    br(),
+                                    h4("Add More Reads"),
+                                    actionButton('add_sample', 'Select another sample to add?', icon = icon("file-upload")),
+                                    textInput("add_samp",label = NULL, value = "No new sample to add."),
+                                    selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
+                                    actionButton('new_samp_commit', "Add this sample to the DB", icon = icon("coins")),
+                                    br(),
+                                    br(),
+                                    h4("Add Genes"),
+                                    actionButton('add_genes', 'Add genes to database?', icon = icon("file-upload")),
+                                    textInput("add_gen", label = NULL, value = "No genes to add."),
+                                    selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices),
+                                    actionButton('genes_commit', "Add these genes to the DB", icon = icon("coins")),
+                                    
+                                    selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes")),
+                                    
+                                    bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
+                                    bsTooltip("add_sample", "(Optional) Select another set of reads mapped to the same contigs to be added to the database.", placement = "right"),
+                                    bsTooltip("fmt_add", "Select the format of the mapped reads to be added to the existing database.", placement = "right"),
+                                    bsTooltip("add_genes", "(Optional) Add genes for existing contigs.", placement = "right"),
+                                    bsTooltip("fmt_gen", "Select the format of the genes to be added to the existing database. Currently only Prodigal GFF format is supported.", placement = "right"),
+                                    bsTooltip("new_samp_commit", "Once you have selected another set of mapped reads to add and chosen the format, click this to add the sample. The sample will not be added until you do.", placement = "right"),
+                                    bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right")
+                                    
+                                    
+                             ),
+                             
+                             column(5,
+                                    h2("Database Status"),
+                                    verbatimTextOutput("message2")
+                             ),
+                             column(1)
+                             
                            )
-                           ),
+                  ),
                   
                   tabPanel("Recruitment Plot", 
                            sidebarPanel(
@@ -596,7 +603,7 @@ recplot_server <- function(input, output, session) {
   initial_message <- "Welcome to Recruitment Plot!\nThis page allows you to take contigs and reads and create a database.\nPlease select the appropriate files using the options on the left."
   initial_message2 <- "This page is for selecting an existing database to plot, or modifying an existing one.\nIf you just created a database, it should be loaded here.\nYou can add more mapped reads or genes to the database here."
   
-    
+  
   output$message <- renderText(initial_message)
   output$message2 <- renderText(initial_message2)
   
@@ -619,13 +626,37 @@ recplot_server <- function(input, output, session) {
   #Database building
   observeEvent(input$what_are_mags, {
     
-    initial_message <<- paste0(initial_message, "\n\nRecruitment plots were originally designed with metagenomes in mind.\nIn the case that a genome of interest is divided into several discrete genome\nsegments, the segments must be associated with the genome they all belong to.\nThe MAGs file tells the recruitment plot that it should place these segments on the same plot.\nCheck the documentation for help with the MAGs file.\nIf you don't supply a MAGs file, then a placeholder file will be generated from your contigs\nand the recruitment plot will still function. Note: you still need to select contigs first.")
+    initial_message <<- paste0(initial_message, "\n\nRecruitment plots were originally designed with metagenomes in mind.\nIn the case that a genome of interest is divided into several discrete genome\nsegments, the segments must be associated with the genome they all belong to.\nThe MAGs file tells the recruitment plot that it should place these segments on the same plot.\nCheck the documentation for help with the MAGs file.\nIf you don't supply a MAGs file, then a placeholder file will be generated from your contigs\nand the recruitment plot will still function. Note: you still need to select contigs first.\n")
     
     output$message <- renderText(initial_message)
     
     
   })
   
+  observeEvent(input$task, {
+    
+    #Add a don't-do-this if there's not a selected DB
+    if(input$task == "genes"){
+      if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?" | input$exist_dbname == "No DB currently selected"){
+        
+        initial_message2 <<- paste0(initial_message2, "\nYou have to select an existing database before selecting a task.")
+        
+        output$message2 <- renderText(initial_message2)
+        
+        return(NA)
+      }
+      
+      if(!check_presence_of_genes(input$exist_dbname)){
+        
+        initial_message2 <<- paste0(initial_message2, "\nGenes NOT found in database. Have you added them?")
+        output$message2 <- renderText(initial_message2)
+        
+      }
+    }else{
+      return(NA)
+    }
+    
+  })
   
   observeEvent(input$dir, {
     
@@ -695,7 +726,7 @@ recplot_server <- function(input, output, session) {
       needs_MAGs <- T
     }
     
-
+    
     if(!file.exists(input$read_file)){
       ready_to_make <- F
     }
@@ -819,7 +850,7 @@ recplot_server <- function(input, output, session) {
       
       initial_message2 <<- paste0(initial_message2, "\nYou have to select an existing database first.")
       
-      output$message2 <- renderText("You have to select an existing database first.")
+      output$message2 <- renderText(initial_message2)
       return(NA)
     }
     
@@ -849,7 +880,7 @@ recplot_server <- function(input, output, session) {
       initial_message2 <<- paste0(initial_message2, "\nYou must choose a sample before committing it to the database.")
       
       output$message2 <- renderText(initial_message2)
-
+      
       return(NA)
       
     }
@@ -860,7 +891,7 @@ recplot_server <- function(input, output, session) {
     initial_message2 <<- paste0(initial_message2, "\nSample added!")
     
     output$message2 <- renderText(initial_message2)
-
+    
     samples_in_db = assess_samples(input$exist_dbname)
     
     labels <- unlist(samples_in_db)
@@ -952,6 +983,9 @@ recplot_server <- function(input, output, session) {
       
     }
     
+    updateSelectInput(session, "samples", choices = c("Placeholder = placeholder"))
+    updateSelectInput(session, "samples_interact", choices = c("Placeholder = placeholder"))
+    
     updateSelectInput(session, "samples", choices = samples_in_db)
     updateSelectInput(session, "samples_interact", choices = samples_in_db)
     
@@ -1007,7 +1041,7 @@ recplot_server <- function(input, output, session) {
       
       plotting_materials <<- pydat_to_recplot_dat(recplot_data, contig_names)
       
-
+      
       old_value <- input$in_group_min_stat
       
       updateNumericInput(session, "in_group_min_stat", value = old_value-1)
@@ -1184,7 +1218,7 @@ recplot_server <- function(input, output, session) {
         annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
                  ymin = input$in_group_min_interact, 
                  ymax = 100, fill = "darkblue", alpha = .15)+
-        geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40") +
+        geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
     }else{
       
@@ -1219,7 +1253,7 @@ recplot_server <- function(input, output, session) {
         annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
                  ymin = input$in_group_min_interact, 
                  ymax = 100, fill = "darkblue", alpha = .15)+
-        geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40") +
+        geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
     }
     
@@ -1378,7 +1412,7 @@ recplot_landing_page <- function(){
   
 }
 
-recplot_landing_page()
+#recplot_landing_page()
 
 
 
