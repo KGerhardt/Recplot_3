@@ -1785,5 +1785,4 @@ recplot_landing_page <- function(){
 
 #recplot_landing_page()
 
-source_python("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/recplot_database_carlos_genes.py")
 
