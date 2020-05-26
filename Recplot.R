@@ -1786,5 +1786,9 @@ recplot_landing_page <- function(){
   
 }
 
-
+get_python <- function(){
+  
+  source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py", envir = globalenv())
+  
+}
 
