@@ -1816,7 +1816,7 @@ recplot_landing_page <- function(){
 initiate <- function(){
   tryCatch({
     
-    use_miniconda("recruitment_plots")
+    use_miniconda("recruitment_plots", required = T)
     get_python()
     
   }, error = function(cond){
