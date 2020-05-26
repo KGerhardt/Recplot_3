@@ -1786,7 +1786,9 @@ get_python <- function(){
 recplot_landing_page_auto <- function(){
   
   #set environment
-  use_miniconda("recruitment_plots", required = T)
+  try({
+    use_miniconda("recruitment_plots", required = T)
+  })
   
   get_python()
   
@@ -1814,10 +1816,15 @@ prepare_environment <- function(){
  get_python()
  
  if(get_sys() != "Windows"){
-   print("Attempting to install pysam to recruitment_plots...")
-   try({
-     py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
-   }) 
+   if(py_module_available("pysam")){
+     print("Attempting to install pysam to recruitment_plots...")
+     try({
+       py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
+     }) 
+   }else{
+     print("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?")
+   }
+  
  }
  
 }
