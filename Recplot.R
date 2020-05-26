@@ -1816,10 +1816,12 @@ recplot_landing_page <- function(){
 initiate <- function(){
   tryCatch({
     
-    use_miniconda("recruitment_plots", required = T)
+    use_miniconda(condaenv = "recruitment_plots", required = T )
     get_python()
     
   }, error = function(cond){
+    
+    print("Performing first-time setup. Wait a moment, please.")
     
     prepare_environment()
     
@@ -1828,6 +1830,10 @@ initiate <- function(){
   }  )
 }
 
+cat("Initiating recruitment plot environment... ")
+
 initiate()
+
+cat("done!\n")
 
 #recplot_landing_page()
