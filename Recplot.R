@@ -156,10 +156,10 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
   
   #upper left panel
   
-  depth_data <- base[, sum(bp_count/(End-Start+1)), by = key(base)]
+  depth_data <- base[, sum(bp_count/(End-Start+1), na.rm = T), by = key(base)]
   colnames(depth_data)[3] = "count"
   
-  ddSave <- base[, sum(bp_count), by = key(base)]
+  ddSave <- base[, sum(bp_count, na.rm = T), by = key(base)]
   
   nil_depth_data <- depth_data[count == 0]
   nil_depth_data$group_label <- ifelse(nil_depth_data$group_label == "depth.in", "depth.in.nil", "depth.out.nil")
@@ -242,9 +242,12 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
       h.mids <- (10^h.breaks[-1] + 10^h.breaks[-length(h.breaks)])/2
       
       min_info <- list()
-      #min_info$pos.breaks = c(ends$V1, pos_max/bp_div)
-      
-      ends[, adjust := c(-1, V1[1:nrow(ends)-1])+1]
+
+      if(nrow(ends) > 1){
+        ends[, adjust := c(-1, V1[1:nrow(ends)-1])+1]
+      }else{
+        ends[, adjust := 0]
+      }
       
       base[, contiguous_end := End + ends$adjust[match(contig, ends$contig)]]
       
@@ -255,12 +258,11 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
       #This is finicky
       
       try({
+        
         peaks <- enve.recplot2.findPeaks(min_info)
         
         dpt <- signif(as.numeric(lapply(peaks, function(x) x$seq.depth)), 2)
         frx <- signif(100 * as.numeric(lapply(peaks,function(x) ifelse(length(x$values) == 0, x$n.hat, length(x$values))/x$n.total)), 2)
-        
-        
         
         if (peaks[[1]]$err.res < 0) {
           err <- paste(", LL:", signif(peaks[[1]]$err.res,3))
@@ -308,7 +310,7 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
   #bp counts histogram (bottom right panel)
   {
     
-    bp_data <- base[,sum(bp_count), by = Pct_ID_bin]
+    bp_data <- base[,sum(bp_count, na.rm = T), by = Pct_ID_bin]
     
     if(linear == 1){
       
@@ -328,8 +330,8 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
               axis.title = element_text(size = 14),
               axis.text = element_text(size = 14))+
         ylab("Base Pair Count by % ID")
-    } else {
       
+    } else {
       
       p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
         geom_step() +
@@ -347,6 +349,7 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
               axis.title = element_text(size = 14),
               axis.text = element_text(size = 14))+
         ylab("Base Pair Count by % ID")
+      
     }
     
     bp_count_hist <- p4 + annotate("rect", xmin = in_grp_min, xmax = 100, ymin = 0, ymax = Inf, fill = "darkblue", alpha = .15) + coord_flip()
@@ -1783,6 +1786,6 @@ recplot_landing_page <- function(){
   
 }
 
-#recplot_landing_page()
+recplot_landing_page()
 
 
