@@ -63,13 +63,6 @@ if(!check){
 #Replace the condaenv with the env you created
 #use_condaenv("Recruitment_Plot_Testing", required = T)
 
-###########################Development variables
-
-#Main script
-source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
-
-
-##############################################
 #The python import is a space-efficient, but strcutrually awkward data object
 #List of 2 items: list of lists of contig starts, stops, assoc. counts per %ID bin, and %ID bins.
 #This function converts the structure into a recplot-ready data.table with appropriate labelling and returns some other key values for building the plots.
@@ -1751,5 +1744,10 @@ recplot_landing_page <- function(){
 
 #recplot_landing_page()
 
+get_python_script <- function(){
+  
+  source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
+  
+}
 
 
