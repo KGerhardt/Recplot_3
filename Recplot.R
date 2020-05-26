@@ -416,10 +416,16 @@ recplot_UI <- function(){
   {
     system <- get_sys()
     
+    format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
+    
     if(system == "Windows"){
-      format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
+      print("Pysam is unavailable on windows OS. You will be unable to process BAM format reads.")
     }else{
-      format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
+      if(py_module_available("pysam") == T){
+        format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
+      }else{
+        print("Your OS supports pysam, but you do not have it installed. Try 'pip install pysam' on the command line.")
+      }
     }
     
     gene_choices <- c("Prodigal GFF" = "prodigal")

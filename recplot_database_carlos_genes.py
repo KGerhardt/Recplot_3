@@ -5,13 +5,19 @@ import re
 import bisect
 import sqlite3
 import argparse
-from sys import argv
 import platform
+import importlib
 
 if platform.system() == "Windows":
     print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
 else:
-    import pysam
+    try:
+        lib = importlib.import_module("pysam")
+    except:
+        print("Pysam not found. You will be unable to process BAM format reads directly.")
+    else:
+        import pysam
+        print("Pysam available: You will be able to process BAM format reads directly.")		
 	
 def parse_to_mags_identical(contig_file_name, out_file_name):
     
@@ -920,9 +926,9 @@ def check_presence_of_genes(database):
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
             description='''This script builds recruitment plots (COMPLETE DESCRIPTION HERE)\n'''
-            '''Usage: ''' + argv[0] + ''' COMPLETE\n'''
+            '''Usage: ''' + sys.argv[0] + ''' COMPLETE\n'''
             '''Global mandatory parameters: -g [Genome Files] OR -p [Protein Files] OR -s [SCG HMM Results] -o [AAI Table Output]\n'''
-            '''Optional Database Parameters: See ''' + argv[0] + ' -h')
+            '''Optional Database Parameters: See ''' + sys.argv[0] + ' -h')
 
     parser.add_argument("-c", "--contigs", dest="contigs", 
     help = "This should be a FASTA file containing all and only the contigs that you would like to be part of your recruitment plot.")
