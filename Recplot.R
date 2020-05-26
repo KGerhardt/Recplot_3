@@ -447,7 +447,7 @@ recplot_UI <- function(){
                                     
                                     actionButton('mags', '(Optional) Association File', icon = icon("file-upload")),
                                     actionButton("what_are_mags", "Info", icon = icon("question-circle")),
-                                    textInput("mag_file",label = NULL, value = "No MAGs file selected."),
+                                    textInput("mag_file",label = NULL, value = "No association file selected."),
                                     br(),
                                     
                                     
@@ -497,7 +497,7 @@ recplot_UI <- function(){
                                     textInput("add_gen", label = NULL, value = "No genes to add."),
                                     selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices),
                                     actionButton('genes_commit', "Add these genes to the DB", icon = icon("coins")),
-                                    
+                                    br(),
                                     selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes")),
                                     
                                     bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
@@ -668,7 +668,7 @@ recplot_server <- function(input, output, session) {
   directory <- "No directory selected. Try again?"
   reads <- "No file selected. Try again?"
   contigs <- "No file selected. Try again?"
-  mags <- "No file selected. Try again?"
+  mags <- "No association file selected. Try again?"
   new_samp <- "No new sample. Try again?"
   db <- "No existing database selected. Try again?"
   new_genes <- "No genes selected. Try again?"
@@ -787,7 +787,7 @@ recplot_server <- function(input, output, session) {
     if(input$contig_file == "No contigs selected."){
       ready_to_make <- F
     }
-    if(input$mag_file == "No MAGs file selected."){
+    if(input$mag_file == "No association file selected." | input$mag_file == "No association file selected. Try again?"){
       needs_MAGs <- T
     }
     
@@ -1830,10 +1830,10 @@ initiate <- function(){
   }  )
 }
 
-cat("Initiating recruitment plot environment... ")
+cat("Initiating recruitment plot environment. Please wait a moment.\n")
 
 initiate()
 
-cat("done!\n")
+cat("Recruitment plots ready.\n")
 
 #recplot_landing_page()
