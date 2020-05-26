@@ -54,15 +54,6 @@ if(!check){
   library(shinyBS)
 }
 
-#use_condaenv()
-#use_python("/usr/local/bin/python")
-
-#py_discover_config()
-#conda_list()
-
-#Replace the condaenv with the env you created
-#use_condaenv("Recruitment_Plot_Testing", required = T)
-
 #The python import is a space-efficient, but strcutrually awkward data object
 #List of 2 items: list of lists of contig starts, stops, assoc. counts per %ID bin, and %ID bins.
 #This function converts the structure into a recplot-ready data.table with appropriate labelling and returns some other key values for building the plots.
@@ -124,8 +115,6 @@ pydat_to_recplot_dat <- function(extracted_MAG, contig_names){
   
 }
 
-#Transform the base data into the static recplot - use it for a print me! function.
-#Add in the title as sample : MAG
 create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, ...){
   
   group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
@@ -1786,9 +1775,49 @@ recplot_landing_page <- function(){
   
 }
 
+#This will download whatever the current python script is. You have to run it before landing page.
 get_python <- function(){
   
   source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py", envir = globalenv())
   
 }
 
+#This is for my testing.
+recplot_landing_page_auto <- function(){
+  
+  #set environment
+  use_miniconda("recruitment_plots", required = T)
+  
+  get_python()
+  
+  if (interactive()) {
+    runApp(list(ui = recplot_UI(), server = recplot_server), launch.browser = T)
+  }
+  
+  
+}
+
+prepare_environment <- function(){
+
+ print("Checking for Miniconda and installing if necessary...")
+ try({
+   install_miniconda()
+ })
+ 
+ #Checking for first-time use of recplots
+ if(!"recruitment_plots" %in% conda_list()$name){
+   print("Creating Miniconda environment: 'recruitment_plots'")
+      conda_create(envname = "recruitment_plots")
+ }
+ 
+ use_condaenv(condaenv = "recruitment_plots", required = T)
+ get_python()
+ 
+ if(get_sys() != "Windows"){
+   print("Attempting to install pysam to recruitment_plots...")
+   try({
+     py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
+   }) 
+ }
+ 
+}
