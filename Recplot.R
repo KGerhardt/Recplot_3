@@ -1,23 +1,67 @@
-library(reticulate)
-library(ggplot2)
-library(shiny)
-library(data.table)
-library(plotly)
-library(cowplot)
-library(enveomics.R)
-library(shinyBS)
+check <- require(reticulate)
 
-#install.packages(c("reticulate", "ggplot2", "shiny", "data.table", "plotly", "cowplot", "enveomics.R", "shinyBS"))
+if(!check){
+  install.packages("reticulate")
+  library(reticulate)
+}
+
+check <- require(ggplot2)
+
+if(!check){
+  install.packages("ggplot2")
+  library(ggplot2)
+}
+
+check <- require(shiny)
+
+if(!check){
+  install.packages("shiny")
+  library(shiny)
+}
+
+check <- require(data.table)
+
+if(!check){
+  install.packages("data.table")
+  library(data.table)
+}
+
+check <- require(plotly)
+
+if(!check){
+  install.packages("plotly")
+  library(plotly)
+}
+
+check <- require(cowplot)
+
+if(!check){
+  install.packages("cowplot")
+  library(cowplot)
+}
+
+check <- require(enveomics.R)
+
+if(!check){
+  install.packages("enveomics.R")
+  library(enveomics.R)
+}
+
+check <- require(shinyBS)
+
+if(!check){
+  install.packages("shinyBS")
+  library(shinyBS)
+}
 
 #use_condaenv()
 #use_python("/usr/local/bin/python")
 
-py_discover_config()
-conda_list()
+#py_discover_config()
+#conda_list()
 
 #Replace the condaenv with the env you created
-use_condaenv("Recruitment_Plot_Testing", required = T)
-
+#use_condaenv("Recruitment_Plot_Testing", required = T)
 
 ###########################Development variables
 
@@ -1705,7 +1749,7 @@ recplot_landing_page <- function(){
   
 }
 
-recplot_landing_page()
+#recplot_landing_page()
 
 
 
