@@ -1765,37 +1765,10 @@ recplot_server <- function(input, output, session) {
   
 }
 
-#This is the GUI function
-recplot_landing_page <- function(){
-  
-  if (interactive()) {
-    runApp(list(ui = recplot_UI(), server = recplot_server), launch.browser = T)
-  }
-  
-  
-}
-
 #This will download whatever the current python script is. You have to run it before landing page.
 get_python <- function(){
   
   source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py", envir = globalenv())
-  
-}
-
-#This is for my testing.
-recplot_landing_page_auto <- function(){
-  
-  #set environment
-  try({
-    use_miniconda("recruitment_plots", required = T)
-  })
-  
-  get_python()
-  
-  if (interactive()) {
-    runApp(list(ui = recplot_UI(), server = recplot_server), launch.browser = T)
-  }
-  
   
 }
 
@@ -1812,7 +1785,7 @@ prepare_environment <- function(){
       conda_create(envname = "recruitment_plots")
  }
  
- use_condaenv(condaenv = "recruitment_plots", required = T)
+ use_miniconda(condaenv = "recruitment_plots", required = T)
  get_python()
  
  if(get_sys() != "Windows"){
@@ -1828,3 +1801,33 @@ prepare_environment <- function(){
  }
  
 }
+
+#This is the GUI function
+recplot_landing_page <- function(){
+  
+  
+  if (interactive()) {
+    runApp(list(ui = recplot_UI(), server = recplot_server), launch.browser = T)
+  }
+  
+  
+}
+
+initiate <- function(){
+  tryCatch({
+    
+    use_miniconda("recruitment_plots")
+    get_python()
+    
+  }, error = function(cond){
+    
+    prepare_environment()
+    
+    return("Environment prepared.")
+    
+  }  )
+}
+
+initiate()
+
+#recplot_landing_page()
