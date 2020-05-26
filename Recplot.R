@@ -551,7 +551,7 @@ recplot_UI <- function(){
                              ),
                              conditionalPanel(condition = "input.task == 'genes'",
                                               
-                             selectInput("regions_stat", "(5) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                             selectInput("regions_stat", "(5) Display Control", choices = c("Genes Only" = 1, "Intergenic Regions Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
                                               
                              ),
                              
@@ -579,6 +579,8 @@ recplot_UI <- function(){
                              bsTooltip("linear_stat", "Causes the lower right panel to display base pair counts per percent identity bin in linear scale or log scale.", placement = "right"),
                              bsTooltip("print_stat", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to print a PDF of the current", placement = "right"),
                              bsTooltip("show_peaks", "Calculate and overlay peaks for the depth of coverage histogram (top right panel)", placement = "right"),
+                             
+                             bsTooltip("regions_stat", "Controls the display of intergenic regions. Default shows only genes, IGR = InterGenic Region. 'Long IGRs' are intergenic regions > 6 bp in length.", placement = "right"),
                              
                              bsTooltip("recplot_main", "Bottom left panel: a 2-D histogram of the counts of base pairs falling into a bin defined by position in the genome (x-axis) and percent identity (y-axis) Bins are as wide as the genome resolution parameter                             if viewing contigs, and cover genes & intergenic regions in contiguous chunks if viewing genes. The shaded section is the current in-group, which is the dark blue line on the top two plots Top left panel: Average sequencing depth for each x-axis bin on in the bottom left panel. Dark blue corresponds to depth of coverage for bins in the in-group, and light blue to the out-group. Segments at the bottom of the plot have zero coverage. Top right panel: a histogram of the depths of coverage observed in the corresponding in/out group in the sequencing depths chart (top left). If peaks are selected, they correspond to the estimates of the genome's average sequencing depth. Bottom right panel: a histogram of the number of bases falling into each percent identity bin across the entire genome, displayed in linear or log scale depending on your selection.", trigger = "click", placement = "left")
                            ),
@@ -641,6 +643,8 @@ recplot_UI <- function(){
                              bsTooltip("width_interact", "Approximate number of base pairs in each genome window. The Recruitment Plot attempts to normalize bin width for each contig to this size. Lower values = higher resolution, but is slower. Higher values = lower resolution, but is faster.", placement = "right"),
                              bsTooltip("height_interact", "Controls the resolution of percent identity to the reference. Lower values here will result in finer resolution, but will be slower. Hint: The default 0.5% window means a resolution of 1 base pair mismatch per 200 bases; finer resolution is probably uneccessary.", placement = "right"),
                              bsTooltip("low_bound_interact", "Reads mapping below this percent identity will not be included in the current recruitment plot.", placement = "right"),
+                             bsTooltip("regions_interact", "Controls the display of intergenic regions. Default shows only genes, IGR = InterGenic Region. 'Long IGRs' are intergenic regions > 6 bp in length.", placement = "right"),
+                             
                              bsTooltip("get_a_mag_interact", "Click this to load the current genome into the viewer and plot it. Please wait for the plot to appear after clicking this.", placement = "right"),
                              bsTooltip("in_group_min_interact", "Controls the lower edge of the shaded region in the recruitment plot's lower panels. Reads mapping at or above this percent identity are regarded as the \"in-group\" for the Recruitment Plot, and are represented by the dark blue lines in the upper panel.", placement = "right")
                            ),
@@ -669,7 +673,7 @@ recplot_server <- function(input, output, session) {
   output$message <- renderText(initial_message)
   output$message2 <- renderText(initial_message2)
   
-  directory <- getwd()
+  directory <- "No directory selected. Try again?"
   reads <- "No file selected. Try again?"
   contigs <- "No file selected. Try again?"
   mags <- "No file selected. Try again?"
@@ -724,14 +728,20 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$dir, {
     
     tryCatch({
-      directory <- choose.dir()
+      directory <<- choose.dir()
     },
     error = function(cond){
-      directory <- getwd()
+      directory <<- "No directory selected. Try again?"
       return(directory)
     })
     
-    setwd(directory)
+    tryCatch({
+      setwd(directory)
+    },
+    error = function(cond){
+      directory <<- "No directory selected. Try again?"
+      return(directory)
+    })
     
     updateTextInput(session, "cur_dir", value = paste("Working in:", directory))
     
@@ -1372,6 +1382,31 @@ recplot_server <- function(input, output, session) {
         base$bp_count <- base$bp_count
       }
       
+      if(sum(!is.na(base$bp_count)) == 0){
+        static_plot <- ggplot(data.table(1, 1), aes(x = 1, y = 1, label = "No regions with valid counts were detected.\nIt's possible that no genes were\npredicted for this genome."))+
+                       geom_text() +
+                       theme(plot.background = element_blank(),
+                             axis.text = element_blank(),
+                             axis.title = element_blank(),
+                             axis.ticks = element_blank(),
+                             axis.line = element_blank(),
+                             panel.grid = element_blank())
+      }else{
+        static_plot <- create_static_plot(base = base,
+                                          bp_unit = bp_unit,
+                                          bp_div = bp_div,
+                                          pos_max = pos_max,
+                                          in_grp_min = input$in_group_min_stat,
+                                          id_break = input$height,
+                                          width = input$width,
+                                          linear = input$linear_stat,
+                                          showpeaks= input$show_peaks,
+                                          ends = ending
+        )
+      }
+      
+      return(static_plot)
+      
     }
     
     static_plot <- create_static_plot(base = base,
@@ -1750,4 +1785,5 @@ recplot_landing_page <- function(){
 
 #recplot_landing_page()
 
+source_python("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build/recplot_database_carlos_genes.py")
 

@@ -701,18 +701,24 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
     matrix = {}
     annotation_matrix = {}
 	
+	#The script has to be able to access names through IDs, which this dict accomplishes. Otherwise it only works for the first genome in the DB
+    contig_assoc = {}
+    for i in range(0, len(contig_sizes)):
+        contig_assoc[contig_sizes[i][0]] = contig_names[i]
+	
+	
     #Since genes are separated, id_len can be iterated through to give a length of contig for each and all the assoc. gene data can be accessed by name
-    
+		
     #id_len is a list of contig name, contig_length
     for id_len in contig_sizes:
-        
+	        
 		#These are the starts and ends of each gene on this contig
-        starts = gene_matrix[str(contig_names[id_len[0]-1])][1][:]
-        ends = gene_matrix[str(contig_names[id_len[0]-1])][2][:]
+        starts = gene_matrix[str(contig_assoc[id_len[0]])][1][:]
+        ends = gene_matrix[str(contig_assoc[id_len[0]])][2][:]
 		
-        gene_names = gene_matrix[str(contig_names[id_len[0]-1])][0][:]
-        strand = gene_matrix[str(contig_names[id_len[0]-1])][3][:]
-        annotation = gene_matrix[str(contig_names[id_len[0]-1])][4][:]
+        gene_names = gene_matrix[str(contig_assoc[id_len[0]])][0][:]
+        strand = gene_matrix[str(contig_assoc[id_len[0]])][3][:]
+        annotation = gene_matrix[str(contig_assoc[id_len[0]])][4][:]
 		
         final_gene_names = []
         final_gene_strands = []
@@ -723,8 +729,9 @@ def prepare_matrices_genes(database, mag_name, bin_height, id_lower):
         final_gene_ends = []
 
         pct_id_counts = []
-        
+        		
         contig_length = id_len[1]
+		
 		
         final_starts = [1]
         final_ends = []
@@ -840,9 +847,9 @@ def extract_MAG_for_R(database, sample, mag_name, width, bin_height, id_lower):
     
 def extract_genes_MAG_for_R(database, sample, mag_name, bin_height, id_lower):
     mag_id, matrix, id_breaks, gene_table = prepare_matrices_genes(database, mag_name, bin_height, id_lower)
-    
+    	
     matrix = fill_matrices(database, mag_id, sample, matrix, id_breaks)
-    
+    	
     return(matrix, id_breaks, gene_table)
     
 	
