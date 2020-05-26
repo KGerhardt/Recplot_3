@@ -1744,10 +1744,4 @@ recplot_landing_page <- function(){
 
 #recplot_landing_page()
 
-get_python_script <- function(){
-  
-  source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py")
-  
-}
-
 
