@@ -89,10 +89,7 @@ pydat_to_recplot_dat <- function(extracted_MAG, contig_names){
 
 #Transform the base data into the static recplot - use it for a print me! function.
 #Add in the title as sample : MAG
-create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ...){
-  
-  ends <- base[, max(End), by = contig]
-  ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
+create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, ...){
   
   group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
   
@@ -109,6 +106,7 @@ create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_br
           axis.title = element_text(size = 14),
           axis.text = element_text(size = 14)) +
     geom_raster()
+
   
   p <- p + annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
                     ymin = in_grp_min, 
@@ -412,8 +410,8 @@ recplot_UI <- function(){
                                     selectInput('fmt', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
                                     br(),
                                     
-                                    actionButton('mags', '(Optional) Select MAGs', icon = icon("file-upload")),
-                                    actionButton("what_are_mags", "MAGs?", icon = icon("question-circle")),
+                                    actionButton('mags', '(Optional) Association File', icon = icon("file-upload")),
+                                    actionButton("what_are_mags", "Info", icon = icon("question-circle")),
                                     textInput("mag_file",label = NULL, value = "No MAGs file selected."),
                                     br(),
                                     
@@ -427,7 +425,7 @@ recplot_UI <- function(){
                                     
                                     bsTooltip("dir", "(Optional) Select a working directory. The database and any saved plots will be placed here.", placement = "right"),
                                     bsTooltip("contigs", "Select a FASTA format file containing assembled contig DNA sequences.", placement = "right"),
-                                    bsTooltip("mags", "Select a MAGs association file. This should be a 2-column, tab-separated file with the name of each contig in the contigs file in the first column, and the name of the MAG to which each contig belongs in the second column.", placement = "right"),
+                                    bsTooltip("mags", "Select an association file. This is a file designed to support the visualization of genomes divided into multiple contigs. Click the info button to learn more.", placement = "right"),
                                     bsTooltip("reads", "Select a mapped read file. These reads should be mapped to the contigs in the contig file selected above.", placement = "right"),
                                     bsTooltip("fmt", "Select the format of the mapped reads to be added to the new database.", placement = "right"),
                                     bsTooltip("dbname", "Name your database. A .db extension will be added to the end of the name you give it.", placement = "right"),
@@ -499,11 +497,20 @@ recplot_UI <- function(){
                              
                              h4("Select Bin Resolution"),
                              
-                             numericInput("width", "(3) Genome Resolution", min = 75, max = 5000, value = 1000),
+                             numericInput("height", "(3) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
                              
-                             numericInput("height", "(4) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
+                             numericInput("low_bound", "(4) Minimum Pct. ID", min = 50, max = 95, value = 70),
                              
-                             numericInput("low_bound", "(5) Minimum Pct. ID", min = 50, max = 95, value = 70),
+                             conditionalPanel(condition = "input.task == 'contigs'",
+                                              
+                             numericInput("width", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
+                                              
+                             ),
+                             conditionalPanel(condition = "input.task == 'genes'",
+                                              
+                             selectInput("regions_stat", "(5) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                                              
+                             ),
                              
                              h4("Load Selected Genome"),
                              
@@ -560,11 +567,23 @@ recplot_UI <- function(){
                              
                              h3("Select Bin Resolution"),
                              
-                             numericInput("width_interact", "(3) Genome Resolution", min = 75, max = 5000, value = 1000),
+
                              
-                             numericInput("height_interact", "(4) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
+                             numericInput("height_interact", "(3) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
                              
-                             numericInput("low_bound_interact", "(5) Minimum Pct. ID", min = 50, max = 95, value = 70),
+                             numericInput("low_bound_interact", "(4) Minimum Pct. ID", min = 50, max = 95, value = 70),
+                             
+                             conditionalPanel(condition = "input.task == 'contigs'",
+                                              
+                             numericInput("width_interact", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
+                                              
+                             ),
+
+                             conditionalPanel(condition = "input.task == 'genes'",
+                                              
+                             selectInput("regions_interact", "(5) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                                              
+                             ),
                              
                              h3("Load Selected Genome"),
                              
@@ -626,7 +645,7 @@ recplot_server <- function(input, output, session) {
   #Database building
   observeEvent(input$what_are_mags, {
     
-    initial_message <<- paste0(initial_message, "\n\nRecruitment plots were originally designed with metagenomes in mind.\nIn the case that a genome of interest is divided into several discrete genome\nsegments, the segments must be associated with the genome they all belong to.\nThe MAGs file tells the recruitment plot that it should place these segments on the same plot.\nCheck the documentation for help with the MAGs file.\nIf you don't supply a MAGs file, then a placeholder file will be generated from your contigs\nand the recruitment plot will still function. Note: you still need to select contigs first.\n")
+    initial_message <<- paste0(initial_message, "\n\nRecruitment plots were originally designed with metagenomes in mind.\nIn the case that a genome of interest is divided into several discrete genome\nsegments, the segments must be associated with the genome they all belong to.\nThe association file tells the recruitment plot that it should place these segments on the same plot.\nCheck the documentation for help with creating an association file for your contigs.\nIf you don't supply an association file, then a placeholder will be generated from your contigs\nand the recruitment plot will still function. Note: you still need to select contigs first.\n")
     
     output$message <- renderText(initial_message)
     
@@ -637,6 +656,7 @@ recplot_server <- function(input, output, session) {
     
     #Add a don't-do-this if there's not a selected DB
     if(input$task == "genes"){
+      
       if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?" | input$exist_dbname == "No DB currently selected"){
         
         initial_message2 <<- paste0(initial_message2, "\nYou have to select an existing database before selecting a task.")
@@ -1103,6 +1123,65 @@ recplot_server <- function(input, output, session) {
         pos_max <- base[[4]]
         base <- base[[1]]
         
+        ending <- base[, max(End), by = contig]
+        ending[, V1 := cumsum(V1) - 1 + 1:nrow(ending)]
+        
+        if(input$task == "genes"){
+          
+          #Genes only
+          if(input$regions_stat == 1){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+            base[gene_annotation != "N/A", bp_count := NA,]
+          }
+          #IGR only
+          if(input$regions_stat == 2){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+            base[gene_annotation == "N/A", bp_count := NA,]
+          }
+          #Genes + long IGR
+          if(input$regions_stat == 3){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+            base <- base[End-Start+1 < 6, bp_count := NA,]
+          }
+          
+        }
+        
         static_plot <- create_static_plot(base = base,
                                           bp_unit = bp_unit,
                                           bp_div = bp_div,
@@ -1110,7 +1189,9 @@ recplot_server <- function(input, output, session) {
                                           in_grp_min = input$in_group_min_stat,
                                           id_break = input$height,
                                           width = input$width,
-                                          linear = input$linear_stat
+                                          linear = input$linear_stat,
+                                          showpeaks= input$show_peaks,
+                                          ends = ending
         )
         
         title <- ggdraw() + 
@@ -1151,6 +1232,9 @@ recplot_server <- function(input, output, session) {
     
     input$in_group_min_stat
     input$linear_stat
+    input$regions_stat
+    input$regions_interact
+    input$task
     
     plotting_materials
     
@@ -1159,6 +1243,7 @@ recplot_server <- function(input, output, session) {
   #Static plots
   
   output$read_recruitment_plot <- renderPlot({
+    
     base <- one_mag()
     
     req(!is.na(base))
@@ -1168,6 +1253,84 @@ recplot_server <- function(input, output, session) {
     pos_max <- base[[4]]
     base <- base[[1]]
     
+    old_base <- base
+    
+    ending <- base[, max(End), by = contig]
+    ending[, V1 := cumsum(V1) - 1 + 1:nrow(ending)]
+    
+    if(input$task == "genes"){
+      
+      #Genes only
+      if(input$regions_stat == 1){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$gene_annotation == "N/A"] <- NA
+      }
+      #IGR only
+      if(input$regions_stat == 2){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$gene_annotation != "N/A"] <- NA
+      }
+      #Genes + long IGR
+      if(input$regions_stat == 3){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$End-base$Start+1 < 6] <- NA
+        
+      }
+      if(input$regions_stat == 4){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count <- base$bp_count
+      }
+      
+    }
+    
     static_plot <- create_static_plot(base = base,
                                       bp_unit = bp_unit,
                                       bp_div = bp_div,
@@ -1176,7 +1339,8 @@ recplot_server <- function(input, output, session) {
                                       id_break = input$height,
                                       width = input$width,
                                       linear = input$linear_stat,
-                                      showpeaks = input$show_peaks
+                                      showpeaks= input$show_peaks,
+                                      ends = ending
     )
     
     return(static_plot)
@@ -1194,6 +1358,8 @@ recplot_server <- function(input, output, session) {
     bp_div <- base[[3]]
     pos_max <- base[[4]]
     base <- base[[1]]
+    
+    old_base <- base
     
     ends <- base[, max(End), by = contig]
     ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
@@ -1222,17 +1388,75 @@ recplot_server <- function(input, output, session) {
         geom_raster()
     }else{
       
-      ratio <- nrow(base)/nrow(gene_data)
       
-      setkeyv(base, c("contig", "Start"))
-      setkey(gene_data, "contig")
       
-      base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-      base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-      base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-      base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-      base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
-      
+      #Genes only
+      if(input$regions_interact == 1){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$gene_annotation == "N/A"] <- NA
+      }
+      #IGR only
+      if(input$regions_interact == 2){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$gene_annotation != "N/A"] <- NA
+      }
+      #Genes + long IGR
+      if(input$regions_interact == 3){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$End-base$Start+1 < 6] <- NA
+      }
+      if(input$regions_interact == 4){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count <- base$bp_count
+      }
       
       p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
                                                                                              "\nPos. in Contig: ", Start, "-", End,
@@ -1285,12 +1509,12 @@ recplot_server <- function(input, output, session) {
     
     group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
     
-    ddSave <- base[, sum(bp_count), by = key(base)]
+    old_depth <- depth_data
     
-    nil_depth_data <- depth_data[count == 0]
-    nil_depth_data$group_label <- ifelse(nil_depth_data$group_label == "depth.in", "depth.in.nil", "depth.out.nil")
+    #nil_depth_data <- depth_data[count == 0]
+    #nil_depth_data$group_label <- ifelse(nil_depth_data$group_label == "depth.in", "depth.in.nil", "depth.out.nil")
     
-    seg_upper_bound <- min(depth_data$count[depth_data$count > 0])
+    #seg_upper_bound <- min(depth_data$count[depth_data$count > 0])
     
     depth_data$count[depth_data$count == 0] <- NA
     
@@ -1316,10 +1540,10 @@ recplot_server <- function(input, output, session) {
         ylab("Log 10 Depth")
     }else{
       
+      gene_data <- rbind(gene_data, gene_data)
+      
       setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
       setkey(gene_data, "contig")
-      
-      gene_data <- rbind(gene_data, gene_data)
       
       depth_data[, gene_name := gene_data$gene_name]
       depth_data[, gene_start := gene_data$gene_start]
@@ -1328,6 +1552,75 @@ recplot_server <- function(input, output, session) {
       depth_data[, gene_annotation := gene_data$annotation]
       
       setkeyv(depth_data, c("group_label", "seq_pos"))
+      
+      #Genes only
+      if(input$regions_interact == 1){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count[depth_data$gene_annotation == "N/A"] <- NA
+      }
+      #IGR only
+      if(input$regions_interact == 2){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count[depth_data$gene_annotation != "N/A"] <- NA
+      }
+      #Genes + long IGR
+      if(input$regions_interact == 3){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count[depth_data$End-depth_data$Start + 1 < 6] <- NA
+      }
+      if(input$regions_interact == 4){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count <- depth_data$count
+      }
+      #Case 4 is all, so nothing has to be done
       
       seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
                                                                                                                                "\nPos. in Contig: ", Start, "-", End,
@@ -1363,7 +1656,6 @@ recplot_server <- function(input, output, session) {
     seq_depth_chart <- ggplotly(seq_depth_chart, dynamicTicks = T, tooltip = c("text")) %>% 
       layout(plot_bgcolor = "grey90", yaxis = a)
     
-    
     return(seq_depth_chart)
     
   })
@@ -1383,6 +1675,7 @@ recplot_server <- function(input, output, session) {
       updateNumericInput(session, "height", value = input$height_interact)
       updateNumericInput(session, "low_bound", value = input$low_bound_interact)
       updateNumericInput(session, "in_group_min_stat", value = input$in_group_min_interact)
+      updateSelectInput(session, "regions_stat", selected = input$regions_interact)
     }
     if(input$tabs == "Hover Plot"){
       if(!is.null(input$samples)){
@@ -1395,10 +1688,10 @@ recplot_server <- function(input, output, session) {
       updateNumericInput(session, "height_interact", value = input$height)
       updateNumericInput(session, "low_bound_interact", value = input$low_bound)
       updateNumericInput(session, "in_group_min_interact", value = input$in_group_min_stat)
+      updateSelectInput(session, "regions_interact", selected = input$regions_stat)
     }
     
   })
-  
   
 }
 
@@ -1412,7 +1705,7 @@ recplot_landing_page <- function(){
   
 }
 
-#recplot_landing_page()
+recplot_landing_page()
 
 
 
