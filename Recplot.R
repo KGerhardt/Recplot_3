@@ -1824,6 +1824,18 @@ initiate <- function(){
     use_miniconda(condaenv = "recruitment_plots", required = T )
     get_python()
     
+    if(get_sys() != "Windows"){
+      if(!py_module_available("pysam")){
+        print("Attempting to install pysam to recruitment_plots...")
+        try({
+          py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
+        }) 
+      }else{
+        print("Pysam installed! If you saw a warning earlier, ignore it.")
+      }
+      
+    }
+    
   }, error = function(cond){
     
     print("Performing first-time setup. Wait a moment, please.")
