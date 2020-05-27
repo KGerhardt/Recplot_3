@@ -1805,6 +1805,9 @@ prepare_environment <- function(){
 #This is the GUI function
 recplot_landing_page <- function(){
   
+  initiate()
+  
+  cat("Recruitment plots ready.\n")
   
   if (interactive()) {
     runApp(list(ui = recplot_UI(), server = recplot_server), launch.browser = T)
@@ -1814,6 +1817,8 @@ recplot_landing_page <- function(){
 }
 
 initiate <- function(){
+  cat("Initiating recruitment plot environment. Please wait a moment.\n")
+  
   tryCatch({
     
     use_miniconda(condaenv = "recruitment_plots", required = T )
@@ -1830,10 +1835,4 @@ initiate <- function(){
   }  )
 }
 
-cat("Initiating recruitment plot environment. Please wait a moment.\n")
-
-initiate()
-
-cat("Recruitment plots ready.\n")
-
-#recplot_landing_page()
+recplot_landing_page()
