@@ -1829,9 +1829,10 @@ initiate <- function(){
         print("Attempting to install pysam to recruitment_plots...")
         try({
           py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
+          get_python()
         }) 
       }else{
-        print("Pysam installed! If you saw a warning earlier, ignore it.")
+        print("Pysam installed! If you saw a warning earlier, ignore it")
       }
       
     }
