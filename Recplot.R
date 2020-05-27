@@ -1789,7 +1789,7 @@ prepare_environment <- function(){
  get_python()
  
  if(get_sys() != "Windows"){
-   if(py_module_available("pysam")){
+   if(!py_module_available("pysam")){
      print("Attempting to install pysam to recruitment_plots...")
      try({
        py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
