@@ -8,16 +8,13 @@ import argparse
 import platform
 import importlib
 
-if platform.system() == "Windows":
-    print("Pysam cannot be loaded on windows. You will be unable to process BAM files directly.")
-else:
+if platform.system() != "Windows":
     try:
         lib = importlib.import_module("pysam")
     except:
-        print("Pysam not found. You will be unable to process BAM format reads directly.")
+        print("", end = "")
     else:
         import pysam
-        print("Pysam available: You will be able to process BAM format reads directly.")		
 	
 def parse_to_mags_identical(contig_file_name, out_file_name):
     
