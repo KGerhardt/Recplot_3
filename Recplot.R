@@ -1,57 +1,61 @@
-check <- require(reticulate)
-
-if(!check){
-  install.packages("reticulate")
-  library(reticulate)
-}
-
-check <- require(ggplot2)
-
-if(!check){
-  install.packages("ggplot2")
-  library(ggplot2)
-}
-
-check <- require(shiny)
-
-if(!check){
-  install.packages("shiny")
-  library(shiny)
-}
-
-check <- require(data.table)
-
-if(!check){
-  install.packages("data.table")
-  library(data.table)
-}
-
-check <- require(plotly)
-
-if(!check){
-  install.packages("plotly")
-  library(plotly)
-}
-
-check <- require(cowplot)
-
-if(!check){
-  install.packages("cowplot")
-  library(cowplot)
-}
-
-check <- require(enveomics.R)
-
-if(!check){
-  install.packages("enveomics.R")
-  library(enveomics.R)
-}
-
-check <- require(shinyBS)
-
-if(!check){
-  install.packages("shinyBS")
-  library(shinyBS)
+#Package check and install.
+{
+  check <- suppressWarnings(suppressMessages(require(reticulate)))
+  
+  if(!check){
+    install.packages("reticulate")
+    library(reticulate)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(ggplot2)))
+  
+  if(!check){
+    install.packages("ggplot2")
+    library(ggplot2)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(shiny)))
+  
+  if(!check){
+    install.packages("shiny")
+    library(shiny)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(data.table)))
+  
+  if(!check){
+    install.packages("data.table")
+    library(data.table)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(plotly)))
+  
+  if(!check){
+    install.packages("plotly")
+    library(plotly)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(cowplot)))
+  
+  if(!check){
+    install.packages("cowplot")
+    library(cowplot)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(enveomics.R)))
+  
+  if(!check){
+    install.packages("enveomics.R")
+    library(enveomics.R)
+  }
+  
+  check <- suppressWarnings(suppressMessages(require(shinyBS)))
+  
+  if(!check){
+    install.packages("shinyBS")
+    library(shinyBS)
+  }
+  
 }
 
 #The python import is a space-efficient, but strcutrually awkward data object
