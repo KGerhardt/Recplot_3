@@ -523,7 +523,7 @@ def get_mags(mag_file):
 
 #The purpose of this function is to take an empty recplot matrix object associated with one MAG, query the database for the sample and MAG in question,
 #And fill the database with the returned information.
-def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
+def fill_matrices(database, mag_id, sample_name, matrices, id_breaks, truncation_behavior = "edges", truncation_degree = 75):
     """[summary]
     
     Arguments:
@@ -547,6 +547,10 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
     sql_command = 'SELECT * from ' + sample_id + ' WHERE mag_id = ?'
     cursor.execute(sql_command, (mag_id,))
 	
+    contig_maxes = {}
+    for contig in matrices:
+        contig_maxes[contig] = max(matrices[contig][1])
+	
 	#TODO: Consider keeping/removing this in final...
     #read_counter = 0
     
@@ -560,6 +564,20 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks):
             contig_id = read_mapped[1]
             read_start = read_mapped[3]
             read_stop = read_mapped[4]
+			
+            #Reads in the first (default) 75 bp don't count
+            if read_start < truncation_degree:
+                read_start = truncation_degree
+            if read_start > read_stop:
+                continue
+            #Reads in the last (default) 75 bp don't count
+            if read_stop > contig_maxes[contig_id] - truncation_degree:
+                read_stop = truncation_degree
+            if read_start > read_stop:
+                continue
+				
+			
+			
             read_len = read_stop - read_start + 1
             read_id_index = bisect.bisect_right(id_breaks, read_mapped[2]) - 1
             read_start_loc = bisect.bisect_left(matrices[contig_id][1], read_start)

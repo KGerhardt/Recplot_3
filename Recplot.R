@@ -56,353 +56,434 @@
     library(shinyBS)
   }
   
-}
-
-#The python import is a space-efficient, but strcutrually awkward data object
-#List of 2 items: list of lists of contig starts, stops, assoc. counts per %ID bin, and %ID bins.
-#This function converts the structure into a recplot-ready data.table with appropriate labelling and returns some other key values for building the plots.
-pydat_to_recplot_dat <- function(extracted_MAG, contig_names){
+  check <- suppressWarnings(suppressMessages(require(shinyFiles)))
   
-  id_breaks <- unlist(extracted_MAG[[2]])
-  #id_breaks <- paste0(id_breaks - id_width, "-", id_breaks)
-  
-  extracted_MAG <- extracted_MAG[[1]]
-  names(extracted_MAG) = contig_names
-  
-  ends <- lapply(extracted_MAG, function(x){
-    
-    return(x[[2]])
-    
-  })
-  
-  maximum_table <- data.table(contig = names(ends), length = lapply(ends, max))
-  maximum_table[, relative_end := cumsum(length) + 1:nrow(maximum_table) - 1]
-  
-  pos.max <- maximum_table$relative_end[nrow(maximum_table)]
-  
-  bp_unit <- c("(bp)", "(Kbp)", "(Mbp)", "(Gbp)")[findInterval(log10(pos.max), c(0,3,6,9,12,Inf))]
-  bp_div <- c(1, 1e3, 1e6, 1e9)[findInterval(log10(pos.max), c(0,3,6,9,12,Inf))]
-  
-  ends <- unlist(ends)
-  
-  bins <- rbindlist(lapply(extracted_MAG, function(x){
-    
-    return(data.table(cbind(do.call(rbind, x[[3]]))))
-    
-  }))
-  
-  colnames(bins) = as.character(id_breaks)
-  
-  starts <- lapply(extracted_MAG, function(x){
-    
-    return(x[[1]])
-    
-  })
-  #needs start, end, contig name for annotation, rel.pos absolute for plotting
-  
-  bins[, Start := unlist(starts)]
-  
-  bins[, End := ends]
-  
-  bins[, seq_pos := seq(1/bp_div, pos.max/bp_div , length.out = nrow(bins))]
-  
-  bins[, contig := rep(names(starts), times = lengths(starts))]
-  
-  bins <- melt.data.table(bins, id.vars = c("contig", "Start", "End", "seq_pos"))
-  
-  colnames(bins)[5:6] = c("Pct_ID_bin", "bp_count")
-  
-  bins[, Pct_ID_bin := as.numeric(levels(bins$Pct_ID_bin))[bins$Pct_ID_bin]]
-  
-  #return(bins)
-  return(list(bins, bp_unit,bp_div, pos.max))
+  if(!check){
+    install.packages("shinyFiles")
+    library(shinyBFiles)
+  }
   
 }
 
-create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, ...){
-  
-  group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
-  
-  #Lower left panel
-  
-  p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count)))+ 
-    scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
-    ylab("Percent Identity") +
-    xlab(paste("Position in Genome", bp_unit)) +
-    scale_y_continuous(expand = c(0, 0)) +
-    scale_x_continuous(expand = c(0, 0)) +
-    theme(legend.position = "none", 
-          axis.line = element_line(colour = "black"),
-          axis.title = element_text(size = 14),
-          axis.text = element_text(size = 14)) +
-    geom_raster()
-
-  
-  p <- p + annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
-                    ymin = in_grp_min, 
-                    ymax = 100, fill = "darkblue", alpha = .15)
-  
-  read_rec_plot <- p + geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40")
-  
-  base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "depth.in", "depth.out")]
-  setkeyv(base, c("group_label", "seq_pos"))
-  
-  #upper left panel
-  
-  depth_data <- base[, sum(bp_count/(End-Start+1), na.rm = T), by = key(base)]
-  colnames(depth_data)[3] = "count"
-  
-  ddSave <- base[, sum(bp_count, na.rm = T), by = key(base)]
-  
-  nil_depth_data <- depth_data[count == 0]
-  nil_depth_data$group_label <- ifelse(nil_depth_data$group_label == "depth.in", "depth.in.nil", "depth.out.nil")
-  
-  seg_upper_bound <- min(depth_data$count[depth_data$count > 0])
-  
-  depth_data$count[depth_data$count == 0] <- NA
-  
-  seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label))+
-    geom_step(alpha = 0.75) +
-    scale_y_continuous(trans = "log10", labels = scales::scientific) +
-    scale_x_continuous(expand=c(0,0))+
-    theme(legend.position = "none", 
-          panel.border = element_blank(), 
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(), 
-          axis.line = element_line(colour = "black"), 
-          panel.background = element_blank(), 
-          axis.title.x = element_blank(), 
-          #axis.text.y = element_text(angle = 90, hjust = 0.5),
-          axis.title = element_text(size = 14),
-          axis.text = element_text(size = 14)) +
-    scale_color_manual(values = group.colors) +
-    ylab("Depth")
-  
-  if(nrow(nil_depth_data) > 0){
-    seq_depth_chart <- seq_depth_chart + geom_segment(data = nil_depth_data, aes(x = seq_pos, xend = seq_pos, y = 0, yend = seg_upper_bound, color = group_label, group = group_label))
+#Helper functions
+{
+  #This will download whatever the current python script is. You have to run it before landing page.
+  get_python <- function(){
+    
+    source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py", envir = globalenv())
     
   }
   
-  #Seq. depth histograms (top right panel)
-  {
-    depth_data <- depth_data[count > 0]
-    seqdepth.lim <- range(c(depth_data$count[depth_data[,group_label == "depth.in"]], depth_data$count[depth_data[,group_label == "depth.out"]])) * c(1/2, 2)
-    hist_binwidth <- (log10(seqdepth.lim[2]/2) - log10(seqdepth.lim[1] * 2))/199
+  #Checks for necessary setup steps and makes the requisite installs as needed.
+  prepare_environment <- function(){
     
-    depth_data[,count := log10(count)]
-    depth_data$group_label <-factor(depth_data$group_label, levels = c("depth.out", "depth.in"))
-    depth_data <- depth_data[order(group_label),]
+    print("Checking for Miniconda and installing if necessary...")
+    try({
+      install_miniconda()
+    })
     
-    p4 <- ggplot(depth_data, aes(x = count, fill = group_label)) +
-      geom_histogram(binwidth = hist_binwidth) +
-      scale_fill_manual(values = group.colors) +
-      scale_y_continuous(expand=c(0,0)) +
+    #Checking for first-time use of recplots
+    if(!"recruitment_plots" %in% conda_list()$name){
+      print("Creating Miniconda environment: 'recruitment_plots'")
+      conda_create(envname = "recruitment_plots")
+    }
+    
+    use_miniconda(condaenv = "recruitment_plots", required = T)
+    get_python()
+    
+    if(get_sys() != "Windows"){
+      if(py_module_available("pysam")){
+        print("Attempting to install pysam to recruitment_plots...")
+        try({
+          py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
+        }) 
+      }else{
+        print("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?")
+      }
+      
+    }
+    
+  }
+  
+  #Prepares the background miniconda env if necessary; otherwise, sets the environment and loads the python script functions
+  initiate <- function(){
+    cat("Initiating recruitment plot environment. Please wait a moment.\n")
+    
+    tryCatch({
+      
+      use_miniconda(condaenv = "recruitment_plots", required = T )
+      get_python()
+      
+    }, error = function(cond){
+      
+      print("Performing first-time setup. Wait a moment, please.")
+      
+      prepare_environment()
+      
+      return("Environment prepared.")
+      
+    }  )
+  }
+  
+  
+  
+  #The python import is a space-efficient, but strcutrually awkward data object
+  #List of 2 items: list of lists of contig starts, stops, assoc. counts per %ID bin, and %ID bins.
+  #This function converts the structure into a recplot-ready data.table with appropriate labelling and returns some other key values for building the plots.
+  pydat_to_recplot_dat <- function(extracted_MAG, contig_names){
+    
+    id_breaks <- unlist(extracted_MAG[[2]])
+    #id_breaks <- paste0(id_breaks - id_width, "-", id_breaks)
+    
+    extracted_MAG <- extracted_MAG[[1]]
+    names(extracted_MAG) = contig_names
+    
+    ends <- lapply(extracted_MAG, function(x){
+      
+      return(x[[2]])
+      
+    })
+    
+    maximum_table <- data.table(contig = names(ends), length = lapply(ends, max))
+    maximum_table[, relative_end := cumsum(length) + 1:nrow(maximum_table) - 1]
+    
+    pos.max <- maximum_table$relative_end[nrow(maximum_table)]
+    
+    bp_unit <- c("(bp)", "(Kbp)", "(Mbp)", "(Gbp)")[findInterval(log10(pos.max), c(0,3,6,9,12,Inf))]
+    bp_div <- c(1, 1e3, 1e6, 1e9)[findInterval(log10(pos.max), c(0,3,6,9,12,Inf))]
+    
+    ends <- unlist(ends)
+    
+    bins <- rbindlist(lapply(extracted_MAG, function(x){
+      
+      return(data.table(cbind(do.call(rbind, x[[3]]))))
+      
+    }))
+    
+    colnames(bins) = as.character(id_breaks)
+    
+    starts <- lapply(extracted_MAG, function(x){
+      
+      return(x[[1]])
+      
+    })
+    #needs start, end, contig name for annotation, rel.pos absolute for plotting
+    
+    bins[, Start := unlist(starts)]
+    
+    bins[, End := ends]
+    
+    bins[, seq_pos := seq(1/bp_div, pos.max/bp_div , length.out = nrow(bins))]
+    
+    bins[, contig := rep(names(starts), times = lengths(starts))]
+    
+    bins <- melt.data.table(bins, id.vars = c("contig", "Start", "End", "seq_pos"))
+    
+    colnames(bins)[5:6] = c("Pct_ID_bin", "bp_count")
+    
+    bins[, Pct_ID_bin := as.numeric(levels(bins$Pct_ID_bin))[bins$Pct_ID_bin]]
+    
+    #return(bins)
+    return(list(bins, bp_unit,bp_div, pos.max))
+    
+  }
+  
+  create_static_plot <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, trunc_behavior = "ends", trunc_degree = as.integer(75), ...){
+    
+    group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
+
+    #Sets any starts < trunc degree to trunc_degree
+    base <- base[Start < trunc_degree, Start := trunc_degree]
+    #Selects the bins at the end of each contig and subtracts trunc degree from it
+    base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+    #If the final bin was too small, removes it.
+    base <- base[Start <= End,]
+    
+    #Allows for count normalization by bin width across all bins
+    norm_factor <- min(base$End-base$Start) + 1
+    
+    #Lower left panel
+    
+    p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10((bp_count * (norm_factor/(End-Start+1))))))+ 
+      scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
+      ylab("Percent Identity") +
+      xlab(paste("Position in Genome", bp_unit)) +
+      scale_y_continuous(expand = c(0, 0)) +
+      scale_x_continuous(expand = c(0, 0), limits = c(0, pos_max/bp_div)) +
+      theme(legend.position = "none", 
+            axis.line = element_line(colour = "black"),
+            axis.title = element_text(size = 14),
+            axis.text = element_text(size = 14)) +
+      geom_raster()
+    
+    
+    p <- p + annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
+                      ymin = in_grp_min, 
+                      ymax = 100, fill = "darkblue", alpha = .15)
+    
+    read_rec_plot <- p + geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40")
+    
+    base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "depth.in", "depth.out")]
+    setkeyv(base, c("group_label", "seq_pos"))
+    
+    #upper left panel
+    
+    depth_data <- base[, sum(bp_count/(End-Start+1), na.rm = T), by = key(base)]
+    colnames(depth_data)[3] = "count"
+    
+    ddSave <- base[, sum(bp_count, na.rm = T), by = key(base)]
+    
+    nil_depth_data <- depth_data[count == 0]
+    nil_depth_data$group_label <- ifelse(nil_depth_data$group_label == "depth.in", "depth.in.nil", "depth.out.nil")
+    
+    seg_upper_bound <- min(depth_data$count[depth_data$count > 0])
+    
+    depth_data$count[depth_data$count == 0] <- NA
+    
+    seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label))+
+      geom_step(alpha = 0.75) +
+      scale_y_continuous(trans = "log10", labels = scales::scientific) +
+      scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
       theme(legend.position = "none", 
             panel.border = element_blank(), 
             panel.grid.major = element_blank(),
             panel.grid.minor = element_blank(), 
             axis.line = element_line(colour = "black"), 
             panel.background = element_blank(), 
-            axis.ticks.y = element_blank(), 
-            axis.text.y = element_blank(), 
-            axis.text.x = element_text(colour = "white"),
-            axis.ticks.x = element_blank(),
+            axis.title.x = element_blank(), 
+            #axis.text.y = element_text(angle = 90, hjust = 0.5),
             axis.title = element_text(size = 14),
             axis.text = element_text(size = 14)) +
-      xlab(label = element_blank()) +
-      ylab(label = element_blank())
+      scale_color_manual(values = group.colors) +
+      ylab("Depth")
     
-    if(showpeaks){
-      
-      enve.recplot2.__peakHist <- function
-      ### Internal ancilliary function (see `enve.RecPlot2.Peak`).
-      (x, mids, counts=TRUE){
-        d.o <- x$param.hat
-        if(length(x$log)==0) x$log <- FALSE
-        if(x$log){
-          d.o$x <- log(mids)
-        }else{
-          d.o$x <- mids
-        }
-        prob  <- do.call(paste('d', x$dist, sep=''), d.o)
-        if(!counts) return(prob)
-        if(length(x$values)>0) return(prob*length(x$values)/sum(prob))
-        return(prob*x$n.hat/sum(prob))
-      }
-      
-      h.breaks <- seq(log10(seqdepth.lim[1] * 2), log10(seqdepth.lim[2]/2), 
-                      length.out = 200)
-      h.mids <- (10^h.breaks[-1] + 10^h.breaks[-length(h.breaks)])/2
-      
-      min_info <- list()
-
-      if(nrow(ends) > 1){
-        ends[, adjust := c(-1, V1[1:nrow(ends)-1])+1]
-      }else{
-        ends[, adjust := 0]
-      }
-      
-      base[, contiguous_end := End + ends$adjust[match(contig, ends$contig)]]
-      
-      min_info$pos.breaks = c(0, base$contiguous_end[match(ddSave$seq_pos[ddSave$group_label == "depth.in"], base$seq_pos)])
-      
-      min_info$pos.counts.in = ddSave$V1[ddSave$group_label == "depth.in"]
-      
-      #This is finicky
-      
-      try({
-        
-        peaks <- enve.recplot2.findPeaks(min_info)
-        
-        dpt <- signif(as.numeric(lapply(peaks, function(x) x$seq.depth)), 2)
-        frx <- signif(100 * as.numeric(lapply(peaks,function(x) ifelse(length(x$values) == 0, x$n.hat, length(x$values))/x$n.total)), 2)
-        
-        if (peaks[[1]]$err.res < 0) {
-          err <- paste(", LL:", signif(peaks[[1]]$err.res,3))
-        }  else {
-          err <- paste(", err:", signif(as.numeric(lapply(peaks, function(x) x$err.res)), 2))
-        }
-        labels <- paste(letters[1:length(peaks)], ". ", dpt, "X (", frx, "%", err, ")", sep = "")
-        
-        peak_counts <- lapply(peaks, enve.recplot2.__peakHist, h.mids)
-        
-        plot_breaks = h.breaks[-length(h.breaks)]
-        
-        gg_peak_info <- data.table(plot_breaks = rep(plot_breaks, length(peak_counts)), count = unlist(peak_counts), grp = rep(labels, each = length(plot_breaks)))
-        
-        p4 <- p4 + geom_line(data = gg_peak_info, aes(x = plot_breaks, y = count, color = grp, group = grp), inherit.aes = F, color = "red", lwd = 1.13)
-        
-      })
+    if(nrow(nil_depth_data) > 0){
+      seq_depth_chart <- seq_depth_chart + geom_segment(data = nil_depth_data, aes(x = seq_pos, xend = seq_pos, y = 0, yend = seg_upper_bound, color = group_label, group = group_label))
       
     }
     
-    p4 <- p4 + coord_flip()
-    
-    if(showpeaks){
+    #Seq. depth histograms (top right panel)
+    {
+      depth_data <- depth_data[count > 0]
+      seqdepth.lim <- range(c(depth_data$count[depth_data[,group_label == "depth.in"]], depth_data$count[depth_data[,group_label == "depth.out"]])) * c(1/2, 2)
+      hist_binwidth <- (log10(seqdepth.lim[2]/2) - log10(seqdepth.lim[1] * 2))/199
       
-      try({
-        o_max <- max(table(findInterval(depth_data$count[depth_data$group_label == "depth.in"], h.breaks)))*.75
-        x_start = 0
+      depth_data[,count := log10(count)]
+      depth_data$group_label <-factor(depth_data$group_label, levels = c("depth.out", "depth.in"))
+      depth_data <- depth_data[order(group_label),]
+      
+      p4 <- ggplot(depth_data, aes(x = count, fill = group_label)) +
+        geom_histogram(binwidth = hist_binwidth) +
+        scale_fill_manual(values = group.colors) +
+        scale_y_continuous(expand=c(0,0)) +
+        theme(legend.position = "none", 
+              panel.border = element_blank(), 
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              axis.line = element_line(colour = "black"), 
+              panel.background = element_blank(), 
+              axis.ticks.y = element_blank(), 
+              axis.text.y = element_blank(), 
+              axis.text.x = element_text(colour = "white"),
+              axis.ticks.x = element_blank(),
+              axis.title = element_text(size = 14),
+              axis.text = element_text(size = 14)) +
+        xlab(label = element_blank()) +
+        ylab(label = element_blank())
+      
+      if(showpeaks){
         
-        if(length(labels) > 0){
-          for(i in labels){
-            p4 <- p4 + annotate("text", label = i, y = o_max, x = x_start, size = 3)
-            x_start = x_start - .185
+        enve.recplot2.__peakHist <- function
+        ### Internal ancilliary function (see `enve.RecPlot2.Peak`).
+        (x, mids, counts=TRUE){
+          d.o <- x$param.hat
+          if(length(x$log)==0) x$log <- FALSE
+          if(x$log){
+            d.o$x <- log(mids)
+          }else{
+            d.o$x <- mids
           }
+          prob  <- do.call(paste('d', x$dist, sep=''), d.o)
+          if(!counts) return(prob)
+          if(length(x$values)>0) return(prob*length(x$values)/sum(prob))
+          return(prob*x$n.hat/sum(prob))
         }
-      })
+        
+        h.breaks <- seq(log10(seqdepth.lim[1] * 2), log10(seqdepth.lim[2]/2), 
+                        length.out = 200)
+        h.mids <- (10^h.breaks[-1] + 10^h.breaks[-length(h.breaks)])/2
+        
+        min_info <- list()
+        
+        if(nrow(ends) > 1){
+          ends[, adjust := c(-1, V1[1:nrow(ends)-1])+1]
+        }else{
+          ends[, adjust := 0]
+        }
+        
+        base[, contiguous_end := End + ends$adjust[match(contig, ends$contig)]]
+        
+        min_info$pos.breaks = c(0, base$contiguous_end[match(ddSave$seq_pos[ddSave$group_label == "depth.in"], base$seq_pos)])
+        
+        min_info$pos.counts.in = ddSave$V1[ddSave$group_label == "depth.in"]
+        
+        #This is finicky
+        
+        try({
+          
+          peaks <- enve.recplot2.findPeaks(min_info)
+          
+          dpt <- signif(as.numeric(lapply(peaks, function(x) x$seq.depth)), 2)
+          frx <- signif(100 * as.numeric(lapply(peaks,function(x) ifelse(length(x$values) == 0, x$n.hat, length(x$values))/x$n.total)), 2)
+          
+          if (peaks[[1]]$err.res < 0) {
+            err <- paste(", LL:", signif(peaks[[1]]$err.res,3))
+          }  else {
+            err <- paste(", err:", signif(as.numeric(lapply(peaks, function(x) x$err.res)), 2))
+          }
+          labels <- paste(letters[1:length(peaks)], ". ", dpt, "X (", frx, "%", err, ")", sep = "")
+          
+          peak_counts <- lapply(peaks, enve.recplot2.__peakHist, h.mids)
+          
+          plot_breaks = h.breaks[-length(h.breaks)]
+          
+          gg_peak_info <- data.table(plot_breaks = rep(plot_breaks, length(peak_counts)), count = unlist(peak_counts), grp = rep(labels, each = length(plot_breaks)))
+          
+          p4 <- p4 + geom_line(data = gg_peak_info, aes(x = plot_breaks, y = count, color = grp, group = grp), inherit.aes = F, color = "red", lwd = 1.13)
+          
+        })
+        
+      }
+      
+      p4 <- p4 + coord_flip()
+      
+      if(showpeaks){
+        
+        try({
+          o_max <- max(table(findInterval(depth_data$count[depth_data$group_label == "depth.in"], h.breaks)))*.75
+          x_start = 0
+          
+          if(length(labels) > 0){
+            for(i in labels){
+              p4 <- p4 + annotate("text", label = i, y = o_max, x = x_start, size = 3)
+              x_start = x_start - .185
+            }
+          }
+        })
+        
+      }
+      
+      seq_depth_hist <- p4
+      
+      rm(p4)
       
     }
     
-    seq_depth_hist <- p4
-    
-    rm(p4)
-    
-  }
-  
-  #bp counts histogram (bottom right panel)
-  {
-    
-    bp_data <- base[,sum(bp_count, na.rm = T), by = Pct_ID_bin]
-    
-    if(linear == 1){
+    #bp counts histogram (bottom right panel)
+    {
       
-      p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
-        geom_step() +
-        scale_y_continuous(expand = c(0,0)) + 
-        scale_x_continuous(expand = c(0,0)) +
-        theme(legend.position = "none", 
-              panel.border = element_blank(), 
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(), 
-              axis.line = element_line(colour = "black"), 
-              panel.background = element_rect(fill = "#EEF7FA"), 
-              axis.text.y = element_blank(), 
-              axis.title.y = element_blank(), 
-              axis.ticks.y = element_blank(),
-              axis.title = element_text(size = 14),
-              axis.text = element_text(size = 14))+
-        ylab("Base Pair Count by % ID")
+      bp_data <- base[,sum(bp_count, na.rm = T), by = Pct_ID_bin]
       
-    } else {
+      if(linear == 1){
+        
+        p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
+          geom_step() +
+          scale_y_continuous(expand = c(0,0)) + 
+          scale_x_continuous(expand = c(0,0)) +
+          theme(legend.position = "none", 
+                panel.border = element_blank(), 
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(), 
+                axis.line = element_line(colour = "black"), 
+                panel.background = element_rect(fill = "#EEF7FA"), 
+                axis.text.y = element_blank(), 
+                axis.title.y = element_blank(), 
+                axis.ticks.y = element_blank(),
+                axis.title = element_text(size = 14),
+                axis.text = element_text(size = 14))+
+          ylab("Base Pair Count by % ID")
+        
+      } else {
+        
+        p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
+          geom_step() +
+          scale_y_continuous(expand = c(0,0), trans = "log10") + 
+          scale_x_continuous(expand = c(0,0)) +
+          theme(legend.position = "none", 
+                panel.border = element_blank(), 
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(), 
+                axis.line = element_line(colour = "black"), 
+                panel.background = element_rect(fill = "#EEF7FA"), 
+                axis.text.y = element_blank(), 
+                axis.title.y = element_blank(), 
+                axis.ticks.y = element_blank(),
+                axis.title = element_text(size = 14),
+                axis.text = element_text(size = 14))+
+          ylab("Base Pair Count by % ID")
+        
+      }
       
-      p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
-        geom_step() +
-        scale_y_continuous(expand = c(0,0), trans = "log10") + 
-        scale_x_continuous(expand = c(0,0)) +
-        theme(legend.position = "none", 
-              panel.border = element_blank(), 
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(), 
-              axis.line = element_line(colour = "black"), 
-              panel.background = element_rect(fill = "#EEF7FA"), 
-              axis.text.y = element_blank(), 
-              axis.title.y = element_blank(), 
-              axis.ticks.y = element_blank(),
-              axis.title = element_text(size = 14),
-              axis.text = element_text(size = 14))+
-        ylab("Base Pair Count by % ID")
+      bp_count_hist <- p4 + annotate("rect", xmin = in_grp_min, xmax = 100, ymin = 0, ymax = Inf, fill = "darkblue", alpha = .15) + coord_flip()
+      
+      rm(p4)
       
     }
     
-    bp_count_hist <- p4 + annotate("rect", xmin = in_grp_min, xmax = 100, ymin = 0, ymax = Inf, fill = "darkblue", alpha = .15) + coord_flip()
+    overall_plot <- plot_grid(seq_depth_chart, seq_depth_hist, read_rec_plot, bp_count_hist, align = "hv", ncol = 2, rel_widths = c(2.7, 1), rel_heights = c(1, 2.3))
     
-    rm(p4)
+    return(overall_plot)
     
   }
   
-  overall_plot <- plot_grid(seq_depth_chart, seq_depth_hist, read_rec_plot, bp_count_hist, align = "hv", ncol = 2, rel_widths = c(2.7, 1), rel_heights = c(1, 2.3))
-  
-  return(overall_plot)
-  
-}
-
-gene_pydat_to_recplot_dat_prodigal <- function(prodigal_gene_mess){
-  
-  contigs <- names(prodigal_gene_mess)
-  
-  lengths <- unname(unlist(lapply(prodigal_gene_mess, function(x){
+  gene_pydat_to_recplot_dat_prodigal <- function(prodigal_gene_mess){
     
-    return(length(x[[1]]))
+    contigs <- names(prodigal_gene_mess)
     
-  })))
-  
-  pretty_data <- data.table(contig = rep(contigs, times = lengths))
-  
-  
-  
-  pretty_data[, gene_name := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    lengths <- unname(unlist(lapply(prodigal_gene_mess, function(x){
+      
+      return(length(x[[1]]))
+      
+    })))
     
-    return(x[[1]])
+    pretty_data <- data.table(contig = rep(contigs, times = lengths))
     
-  }))) ]
-  
-  pretty_data[, gene_start := unname(unlist(lapply(prodigal_gene_mess, function(x){
     
-    return(x[[2]])
     
-  }))) ]
-  
-  pretty_data[, gene_end := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    pretty_data[, gene_name := unname(unlist(lapply(prodigal_gene_mess, function(x){
+      
+      return(x[[1]])
+      
+    }))) ]
     
-    return(x[[3]])
+    pretty_data[, gene_start := unname(unlist(lapply(prodigal_gene_mess, function(x){
+      
+      return(x[[2]])
+      
+    }))) ]
     
-  }))) ]
-  
-  pretty_data[, strand  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+    pretty_data[, gene_end := unname(unlist(lapply(prodigal_gene_mess, function(x){
+      
+      return(x[[3]])
+      
+    }))) ]
     
-    return(x[[4]])
+    pretty_data[, strand  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+      
+      return(x[[4]])
+      
+    }))) ]
+    pretty_data[, annotation  := unname(unlist(lapply(prodigal_gene_mess, function(x){
+      
+      return(x[[5]])
+      
+    }))) ]
     
-  }))) ]
-  pretty_data[, annotation  := unname(unlist(lapply(prodigal_gene_mess, function(x){
     
-    return(x[[5]])
+    return(pretty_data)
     
-  }))) ]
-  
-  
-  return(pretty_data)
-  
+    
+  }
   
 }
 
@@ -684,6 +765,9 @@ recplot_server <- function(input, output, session) {
   exist_db <- "No existing database selected. Try again?"
   
   samples_in_db <- "No database selected or built yet."
+  
+  #These will need to be later incorporated into the interactive inputs
+  trunc_degree <- as.integer(75)
   
   #Database building
   observeEvent(input$what_are_mags, {
@@ -1438,11 +1522,20 @@ recplot_server <- function(input, output, session) {
     ends <- base[, max(End), by = contig]
     ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
     
-    widths <- base$End - base$Start +1
-    
-    base$bp_count <- base$bp_count*(input$width/widths)
-    
     if(input$task == "contigs"){
+      #Sets any starts < trunc degree to trunc_degree
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      #If the final bin was too small, removes it.
+      base <- base[Start <= End,]
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
+      
       p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
                                                                                              "\nPos. in Contig: ", Start, "-", End,
                                                                                              "\nNorm. Bin Count: ", round(bp_count))))+ 
@@ -1462,7 +1555,11 @@ recplot_server <- function(input, output, session) {
         geom_raster()
     }else{
       
-      
+      if(length(gene_data) == 1){
+        if(is.na(gene_data)){
+          print("Recruitment plots are currently missing gene data. You likely switched from viewing contigs to genes. Click 'View current genome' and this will correct itself.")
+        }
+      }
       
       #Genes only
       if(input$regions_interact == 1){
@@ -1532,6 +1629,19 @@ recplot_server <- function(input, output, session) {
         base$bp_count <- base$bp_count
       }
       
+      #Sets any starts < trunc degree to trunc_degree
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      #If the final bin was too small, removes it.
+      base <- base[Start <= End,]
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
+      
       p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
                                                                                              "\nPos. in Contig: ", Start, "-", End,
                                                                                              "\nNorm. Bin Count: ", round(bp_count),
@@ -1543,7 +1653,7 @@ recplot_server <- function(input, output, session) {
         ylab("Percent Identity") +
         xlab(paste("Position in Genome", bp_unit)) +
         scale_y_continuous(expand = c(0, 0)) +
-        scale_x_continuous(expand = c(0, 0)) +
+        scale_x_continuous(expand = c(0, 0), limits = c(0, pos_max/bp_div)) +
         theme(legend.position = "none", 
               axis.line = element_line(colour = "black"),
               axis.title = element_text(size = 14),
@@ -1576,6 +1686,13 @@ recplot_server <- function(input, output, session) {
     
     base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.in", "depth.out")
     
+    
+    #Sets any starts < trunc degree to trunc_degree
+    base <- base[Start < trunc_degree, Start := trunc_degree]
+    #Selects the bins at the end of each contig and subtracts trunc degree from it
+    base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+
+    
     setkeyv(base, c("group_label", "seq_pos"))
     
     depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
@@ -1594,12 +1711,15 @@ recplot_server <- function(input, output, session) {
     
     if(input$task == "contigs"){
       
+      #If bins need deleted at ends of contigs, this does so
+      depth_data <- depth_data[Start <= End, ]
+      
       seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
                                                                                                                                "\nPos. in Contig: ", Start, "-", End,
                                                                                                                                "\nSeq. Depth: ", round(count))))+
         geom_step(alpha = 0.75) +
         scale_y_continuous(trans = "log10") +
-        scale_x_continuous(expand=c(0,0))+
+        scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
         theme(legend.position = "none", 
               panel.border = element_blank(), 
               panel.grid.major = element_blank(),
@@ -1694,7 +1814,9 @@ recplot_server <- function(input, output, session) {
         
         depth_data$count <- depth_data$count
       }
-      #Case 4 is all, so nothing has to be done
+      
+      #If bins need deleted at ends of contigs, this does so
+      depth_data <- depth_data[Start <= End, ]
       
       seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
                                                                                                                                "\nPos. in Contig: ", Start, "-", End,
@@ -1705,7 +1827,7 @@ recplot_server <- function(input, output, session) {
                                                                                                                                "\nAnnotation: ", gene_annotation)))+
         geom_step(alpha = 0.75) +
         scale_y_continuous(trans = "log10") +
-        scale_x_continuous(expand=c(0,0))+
+        scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
         theme(legend.position = "none", 
               panel.border = element_blank(), 
               panel.grid.major = element_blank(),
@@ -1769,44 +1891,7 @@ recplot_server <- function(input, output, session) {
   
 }
 
-#This will download whatever the current python script is. You have to run it before landing page.
-get_python <- function(){
-  
-  source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py", envir = globalenv())
-  
-}
-
-prepare_environment <- function(){
-
- print("Checking for Miniconda and installing if necessary...")
- try({
-   install_miniconda()
- })
- 
- #Checking for first-time use of recplots
- if(!"recruitment_plots" %in% conda_list()$name){
-   print("Creating Miniconda environment: 'recruitment_plots'")
-      conda_create(envname = "recruitment_plots")
- }
- 
- use_miniconda(condaenv = "recruitment_plots", required = T)
- get_python()
- 
- if(get_sys() != "Windows"){
-   if(!py_module_available("pysam")){
-     print("Attempting to install pysam to recruitment_plots...")
-     try({
-       py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
-     }) 
-   }else{
-     print("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?")
-   }
-  
- }
- 
-}
-
-#This is the GUI function
+#This is the controller function
 recplot_landing_page <- function(){
   
   initiate()
@@ -1820,36 +1905,10 @@ recplot_landing_page <- function(){
   
 }
 
-initiate <- function(){
-  cat("Initiating recruitment plot environment. Please wait a moment.\n")
-  
-  tryCatch({
-    
-    use_miniconda(condaenv = "recruitment_plots", required = T )
-    get_python()
-    
-    if(get_sys() != "Windows"){
-      if(!py_module_available("pysam")){
-        print("Attempting to install pysam to recruitment_plots...")
-        try({
-          py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
-          get_python()
-        }) 
-      }else{
-        print("Pysam installed! If you saw a warning earlier, ignore it")
-      }
-      
-    }
-    
-  }, error = function(cond){
-    
-    print("Performing first-time setup. Wait a moment, please.")
-    
-    prepare_environment()
-    
-    return("Environment prepared.")
-    
-  }  )
-}
 
 recplot_landing_page()
+
+
+
+
+
