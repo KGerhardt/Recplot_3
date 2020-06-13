@@ -56,12 +56,6 @@
     library(shinyBS)
   }
   
-  check <- suppressWarnings(suppressMessages(require(shinyFiles)))
-  
-  if(!check){
-    install.packages("shinyFiles")
-    library(shinyBFiles)
-  }
   
 }
 
