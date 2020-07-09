@@ -1396,9 +1396,9 @@ recplot_server <- function(input, output, session) {
     if(input$task == "genes"){
       
       if(is.na(gene_data)){
-        print("Here's where I can break")
+        
         warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = "This is not an error message.\nIt seems you switched from viewing contigs to genes.\nYour Recruitment Plot needs the gene data.\nPlease hit the 'View Selected Genome' button again."))+
-          geom_text() +
+          geom_text(size = 6) +
           theme(panel.background = element_blank(),
                 axis.title = element_blank(),
                 axis.text = element_blank(),
@@ -1572,7 +1572,7 @@ recplot_server <- function(input, output, session) {
     }else{
       
       if(is.na(gene_data)){
-        print("Here's where I can break")
+        
         warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = "This is not an error message.\nIt seems you switched from viewing contigs to genes.\nYour Recruitment Plot needs the gene data.\nPlease hit the 'View Selected Genome' button again."))+
           geom_text() +
           theme(panel.background = element_blank(),
@@ -1759,7 +1759,7 @@ recplot_server <- function(input, output, session) {
     }else{
       
       if(is.na(gene_data)){
-        print("Here's where I can break")
+        
         warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = ""))+
           geom_text() +
           theme(panel.background = element_blank(),
