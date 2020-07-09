@@ -1404,7 +1404,7 @@ recplot_server <- function(input, output, session) {
                 axis.text = element_blank(),
                 axis.ticks = element_blank())
         
-        warning_plot <- ggplotly(warning_plot)
+        #warning_plot <- ggplotly(warning_plot)
         
         return(warning_plot)
       }
@@ -1579,6 +1579,8 @@ recplot_server <- function(input, output, session) {
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank())
+        
+        warning_plot <- ggplotly(warning_plot)
         
         return(warning_plot)
       }
@@ -1755,6 +1757,21 @@ recplot_server <- function(input, output, session) {
         scale_color_manual(values = group.colors) +
         ylab("Log 10 Depth")
     }else{
+      
+      if(is.na(gene_data)){
+        print("Here's where I can break")
+        warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = ""))+
+          geom_text() +
+          theme(panel.background = element_blank(),
+                axis.title = element_blank(),
+                axis.text = element_blank(),
+                axis.ticks = element_blank())
+        
+        warning_plot <- ggplotly(warning_plot)
+        
+        return(warning_plot)
+      }
+      
       
       gene_data <- rbind(gene_data, gene_data)
       
