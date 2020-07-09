@@ -56,6 +56,12 @@
     library(shinyBS)
   }
   
+  check <- suppressWarnings(suppressMessages(require(shinyFiles)))
+  
+  if(!check){
+    install.packages("shinyFiles")
+    library(shinyFiles)
+  }
   
 }
 
@@ -737,7 +743,7 @@ recplot_UI <- function(){
 
 recplot_server <- function(input, output, session) {
   
-  initial_message <- "Welcome to Recruitment Plot!\nThis page allows you to take contigs and reads and create a database.\nPlease select the appropriate files using the options on the left."
+  initial_message <- "Welcome to Recruitment Plot!\nThis page allows you to take contigs and reads and create a database.\nPlease select the appropriate files using the options on the left.\nFile selection windows may pop up in the background, so please check!"
   initial_message2 <- "This page is for selecting an existing database to plot, or modifying an existing one.\nIf you just created a database, it should be loaded here.\nYou can add more mapped reads or genes to the database here."
   
   
@@ -823,7 +829,7 @@ recplot_server <- function(input, output, session) {
   
   observeEvent(input$reads, {
     tryCatch({
-      reads <- file.choose()
+      reads <- file.choose(new = T)
     },
     error = function(cond){
       reads <- "No file selected. Try again?"
@@ -835,7 +841,7 @@ recplot_server <- function(input, output, session) {
   
   observeEvent(input$contigs, {
     tryCatch({
-      contigs <- file.choose()
+      contigs <- file.choose(new = T)
     },
     error = function(cond){
       contigs <- "No file selected. Try again?"
@@ -847,7 +853,7 @@ recplot_server <- function(input, output, session) {
   
   observeEvent(input$mags, {
     tryCatch({
-      mags <- file.choose()
+      mags <- file.choose(new = T)
     },
     error = function(cond){
       mags <- "No file selected. Try again?"
@@ -979,7 +985,7 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$exist_db,{
     
     tryCatch({
-      db <- file.choose()
+      db <- file.choose(new = T)
     },
     error = function(cond){
       db <- "No existing database selected. Try again?"
@@ -1002,7 +1008,7 @@ recplot_server <- function(input, output, session) {
     }
     
     tryCatch({
-      new_samp <- file.choose()
+      new_samp <- file.choose(new = T)
     },
     error = function(cond){
       new_samp <- "No new sample. Try again?"
@@ -1064,7 +1070,7 @@ recplot_server <- function(input, output, session) {
     }
     
     tryCatch({
-      new_genes <- file.choose()
+      new_genes <- file.choose(new = T)
     },
     error = function(cond){
       new_genes <- "No genes selected. Try again?"
@@ -1255,6 +1261,8 @@ recplot_server <- function(input, output, session) {
         
         if(input$task == "genes"){
           
+  
+          
           #Genes only
           if(input$regions_stat == 1){
             base <- one_mag()[[1]]
@@ -1386,6 +1394,20 @@ recplot_server <- function(input, output, session) {
     ending[, V1 := cumsum(V1) - 1 + 1:nrow(ending)]
     
     if(input$task == "genes"){
+      
+      if(is.na(gene_data)){
+        print("Here's where I can break")
+        warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = "This is not an error message.\nIt seems you switched from viewing contigs to genes.\nYour Recruitment Plot needs the gene data.\nPlease hit the 'View Selected Genome' button again."))+
+          geom_text() +
+          theme(panel.background = element_blank(),
+                axis.title = element_blank(),
+                axis.text = element_blank(),
+                axis.ticks = element_blank())
+        
+        warning_plot <- ggplotly(warning_plot)
+        
+        return(warning_plot)
+      }
       
       #Genes only
       if(input$regions_stat == 1){
@@ -1549,10 +1571,16 @@ recplot_server <- function(input, output, session) {
         geom_raster()
     }else{
       
-      if(length(gene_data) == 1){
-        if(is.na(gene_data)){
-          print("Recruitment plots are currently missing gene data. You likely switched from viewing contigs to genes. Click 'View current genome' and this will correct itself.")
-        }
+      if(is.na(gene_data)){
+        print("Here's where I can break")
+        warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = "This is not an error message.\nIt seems you switched from viewing contigs to genes.\nYour Recruitment Plot needs the gene data.\nPlease hit the 'View Selected Genome' button again."))+
+          geom_text() +
+          theme(panel.background = element_blank(),
+                axis.title = element_blank(),
+                axis.text = element_blank(),
+                axis.ticks = element_blank())
+        
+        return(warning_plot)
       }
       
       #Genes only
@@ -1898,7 +1926,6 @@ recplot_landing_page <- function(){
   
   
 }
-
 
 recplot_landing_page()
 
