@@ -63,6 +63,13 @@
     library(hms)
   }
   
+  check <- suppressWarnings(suppressMessages(require(easycsv)))
+  
+  if(!check){
+    install.packages("easycsv")
+    library(easycsv)
+  }
+  
   
 }
 
@@ -486,19 +493,21 @@
     
   }
  
+  #Wish I could add captions to the unix/osx versions
   choose_directory = function(caption = 'Select data directory') {
     if (exists('choose.dir')) {
       choose.dir(caption = caption) 
     } else {
-      tcltk::tk_choose.dir(caption = caption)
+      easycsv::choose_dir()
     }
   }
   
+  #Wish I could add captions to the unix/osx versions
   choose_file = function(caption) {
     if (exists('choose.files')) {
       choose.files(caption = caption, multi = F)
     } else {
-      tcltk::tk_choose.files(caption = caption, multi = F)
+      file.choose(new = T)
     }
   }
   
@@ -1548,7 +1557,7 @@ recplot_server <- function(input, output, session) {
         
         pdf(paste0(input$pdf_name, ".pdf"), height = 11, width = 17)
         
-        print(static_plot)
+        suppressWarnings(print(static_plot))
         
         dev.off()
         
@@ -1728,6 +1737,7 @@ recplot_server <- function(input, output, session) {
     progress$set(message = "Creating Recruitment Plot", value = 1, detail = "Please be patient")
     
     return(static_plot)
+    
   })
   
   #Hover plots
