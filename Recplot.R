@@ -575,11 +575,11 @@ recplot_UI <- function(){
                                     textInput("cur_dir",label = NULL, value = paste("Working in:", getwd()), width = '100%'),
                                     
                                     br(),
-                                    actionButton('contigs', '(2) Select Contigs', icon = icon("file-upload")),
-                                    textInput("contig_file",label = NULL, value = "No contigs selected.", width = '100%'),
+                                    actionButton('contigs', '(2) Select Reference Genomes', icon = icon("file-upload")),
+                                    textInput("contig_file",label = NULL, value = "No genomes selected.", width = '100%'),
                                     br(),
                                     
-                                    actionButton('reads', '(3) Select Reads', icon = icon("file-upload")),
+                                    actionButton('reads', '(3) Select Mapped Reads', icon = icon("file-upload")),
                                     textInput("read_file",label = NULL, value = "No mapped read file selected.", width = '100%'),
                                     selectInput('fmt', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices, width = '100%'),
                                     br(),
@@ -598,9 +598,9 @@ recplot_UI <- function(){
                                     #Tooltips
                                     
                                     bsTooltip("dir", "(Optional) Select a working directory. The database and any saved plots will be placed here.", placement = "right"),
-                                    bsTooltip("contigs", "Select a FASTA format file containing assembled contig DNA sequences.", placement = "right"),
+                                    bsTooltip("contigs", "Select a FASTA format file containing genome sequences or contigs.", placement = "right"),
                                     bsTooltip("mags", "Select an association file. This is a file designed to support the visualization of genomes divided into multiple contigs. Click the info button to learn more.", placement = "right"),
-                                    bsTooltip("reads", "Select a mapped read file. These reads should be mapped to the contigs in the contig file selected above.", placement = "right"),
+                                    bsTooltip("reads", "Select a mapped read file. These reads should be mapped to the genomes in the reference genomes file selected above.", placement = "right"),
                                     bsTooltip("fmt", "Select the format of the mapped reads to be added to the new database.", placement = "right"),
                                     bsTooltip("dbname", "Name your database. A .db extension will be added to the end of the name you give it.", placement = "right"),
                                     bsTooltip("db", "Click me after selecting all input files to create your database.", placement = "right")
@@ -642,13 +642,13 @@ recplot_UI <- function(){
                                     selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes"), width = '100%'),
                                     
                                     bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
-                                    bsTooltip("add_sample", "(Optional) Select another set of reads mapped to the same contigs to be added to the database.", placement = "right"),
+                                    bsTooltip("add_sample", "(Optional) Select another set of reads mapped to the same genomes to be added to the database.", placement = "right"),
                                     bsTooltip("fmt_add", "Select the format of the mapped reads to be added to the existing database.", placement = "right"),
-                                    bsTooltip("add_genes", "(Optional) Add genes for existing contigs.", placement = "right"),
+                                    bsTooltip("add_genes", "(Optional) Add genes for existing genomes.", placement = "right"),
                                     bsTooltip("fmt_gen", "Select the format of the genes to be added to the existing database. Currently only Prodigal GFF format is supported.", placement = "right"),
                                     bsTooltip("new_samp_commit", "Once you have selected another set of mapped reads to add and chosen the format, click this to add the sample. The sample will not be added until you do.", placement = "right"),
                                     bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right"),
-                                    bsTooltip("show_samps", "Display all samples currently in the selected database. Requires a DB to be selected first.", placement = "right")
+                                    bsTooltip("show_samps", "Display all samples currently in the selected database. Requires a database to be selected first.", placement = "right")
                                     
                                     
                              ),
@@ -1357,6 +1357,10 @@ recplot_server <- function(input, output, session) {
       recplot_data <- data.frame(placeholder = 1)
     }else{
       
+      progress <- shiny::Progress$new()
+      on.exit(progress$close())
+      progress$set(message = "Reading Database", value = 0.33, detail = "Please be patient")
+      
       if(input$task == "contigs"){
         recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
       }else{
@@ -1364,6 +1368,8 @@ recplot_server <- function(input, output, session) {
         gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
         
       }
+      
+      progress$set(message = "Reading Database", value = 0.66, detail = "Formatting data for plotting")
       
       contig_names <- unlist(get_contig_names(input$exist_dbname, input$mags_in_db))
       
@@ -1377,6 +1383,8 @@ recplot_server <- function(input, output, session) {
       
       updateNumericInput(session, "in_group_min_stat", value = old_value)
       updateNumericInput(session, "in_group_min_interact", value = old_value)
+      
+      progress$set(message = "Reading Database", value = 1, detail = "Done")
       
     }
     
@@ -1387,12 +1395,18 @@ recplot_server <- function(input, output, session) {
       recplot_data <- data.frame(placeholder = 1)
     }else{
       
+      progress <- shiny::Progress$new()
+      on.exit(progress$close())
+      progress$set(message = "Reading Database", value = 0.33, detail = "Please be patient")
+      
       if(input$task == "contigs"){
         recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
       }else{
         recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, input$low_bound)
         gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
       }
+      
+      progress$set(message = "Reading Database", value = 0.66, detail = "Formatting data for plotting")
       
       contig_names <- unlist(get_contig_names(input$exist_dbname, input$mags_in_db))
       
@@ -1405,6 +1419,9 @@ recplot_server <- function(input, output, session) {
       
       updateNumericInput(session, "in_group_min_stat", value = old_value)
       updateNumericInput(session, "in_group_min_interact", value = old_value)
+      
+      progress$set(message = "Reading Database", value = 1, detail = "Done")
+      
       
     }
     
