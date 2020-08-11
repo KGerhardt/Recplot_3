@@ -59,11 +59,11 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # ===== Database and table creation =====
     # Create or open database
     conn = sqlite3.connect(database)
-	
-	#Check if there are tables ahead of time
-    tables = tables_in_sqlite_db(conn)
 		
     cursor = conn.cursor()
+	
+	#Check if there are tables ahead of time
+    tables = tables_in_sqlite_db(cursor)
 	
 	#Clean out the old DB to begin with; effectively reinitialize.
     for table in tables:
