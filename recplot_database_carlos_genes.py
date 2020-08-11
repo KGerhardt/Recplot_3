@@ -67,7 +67,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
 	
 	#Clean out the old DB to begin with; effectively reinitialize.
     for table in tables:
-        cursor.execute('DROP TABLE '+ table)
+        cursor.execute('DROP TABLE IF EXISTS '+ table)
 
     # Create lookup table (always creates a new one)
     cursor.execute('DROP TABLE IF EXISTS lookup_table')
