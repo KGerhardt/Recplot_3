@@ -64,6 +64,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
 	
     #Check if there are tables ahead of time
     tables = tables_in_sqlite_db(cursor)
+    print(*tables)
 	
 	#Clean out the old DB to begin with; effectively reinitialize.
     for table in tables:
