@@ -60,12 +60,14 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # Create or open database
     conn = sqlite3.connect(database)
 	
-	#Clean the table out to begin with.
+	#Check if there are tables ahead of time
     tables = tables_in_sqlite_db(conn)
-    for table in tables:
-        cursor.execute('DROP TABLE '+ table)
 		
     cursor = conn.cursor()
+	
+	#Clean out the old DB to begin with; effectively reinitialize.
+    for table in tables:
+        cursor.execute('DROP TABLE '+ table)
 
     # Create lookup table (always creates a new one)
     cursor.execute('DROP TABLE IF EXISTS lookup_table')
