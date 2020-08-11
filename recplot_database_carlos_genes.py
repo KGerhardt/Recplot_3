@@ -35,6 +35,15 @@ def parse_to_mags_identical(contig_file_name, out_file_name):
 
 def get_sys():
     return(platform.system())
+	
+def tables_in_sqlite_db(conn):
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [
+        v[0] for v in cursor.fetchall()
+        if v[0] != "sqlite_sequence"
+    ]
+    cursor.close()
+    return tables
 
 def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     """ Read information provided by user and creates SQLite3 database
@@ -50,7 +59,14 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     # ===== Database and table creation =====
     # Create or open database
     conn = sqlite3.connect(database)
+	
+	#Clean the table out to begin with.
+    tables = tables_in_sqlite_db(conn)
+    for table in tables:
+        cursor.execute('DROP TABLE '+ table)
+		
     cursor = conn.cursor()
+
     # Create lookup table (always creates a new one)
     cursor.execute('DROP TABLE IF EXISTS lookup_table')
     cursor.execute('CREATE TABLE lookup_table \
