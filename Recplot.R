@@ -56,12 +56,13 @@
     library(shinyBS)
   }
   
-  check <- suppressWarnings(suppressMessages(require(shinyFiles)))
+  check <- suppressWarnings(suppressMessages(require(hms)))
   
   if(!check){
-    install.packages("shinyFiles")
-    library(shinyFiles)
+    install.packages("hms")
+    library(hms)
   }
+  
   
 }
 
@@ -77,14 +78,14 @@
   #Checks for necessary setup steps and makes the requisite installs as needed.
   prepare_environment <- function(){
     
-    print("Checking for Miniconda and installing if necessary...")
+    cat("Checking for Miniconda and installing if necessary...\n")
     try({
       install_miniconda()
     })
     
     #Checking for first-time use of recplots
     if(!"recruitment_plots" %in% conda_list()$name){
-      print("Creating Miniconda environment: 'recruitment_plots'")
+      cat("Creating Miniconda environment: 'recruitment_plots'\n")
       conda_create(envname = "recruitment_plots")
     }
     
@@ -93,12 +94,12 @@
     
     if(get_sys() != "Windows"){
       if(py_module_available("pysam")){
-        print("Attempting to install pysam to recruitment_plots...")
+        cat("Attempting to install pysam to recruitment_plots...\n")
         try({
           py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
         }) 
       }else{
-        print("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?")
+        cat("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?\n")
       }
       
     }
@@ -107,7 +108,7 @@
   
   #Prepares the background miniconda env if necessary; otherwise, sets the environment and loads the python script functions
   initiate <- function(){
-    cat("Initiating recruitment plot environment. Please wait a moment.\n")
+    cat("Initiating recruitment plot environment. Please wait a moment. ")
     
     tryCatch({
       
@@ -116,7 +117,7 @@
       
     }, error = function(cond){
       
-      print("Performing first-time setup. Wait a moment, please.")
+      cat("\nPerforming first-time setup. Wait a moment, please.\n")
       
       prepare_environment()
       
@@ -484,7 +485,43 @@
     
     
   }
+ 
+  choose_directory = function(caption = 'Select data directory') {
+    if (exists('choose.dir')) {
+      choose.dir(caption = caption) 
+    } else {
+      tcltk::tk_choose.dir(caption = caption)
+    }
+  }
   
+  choose_file = function(caption) {
+    if (exists('choose.files')) {
+      choose.files(caption = caption, multi = F)
+    } else {
+      tcltk::tk_choose.files(caption = caption, multi = F)
+    }
+  }
+  
+  path_simplifier <- function(working_directory, file_path){
+    
+    file_path_t <- gsub("\\\\", "/", file_path)
+    working_directory <- gsub("\\\\", "/", working_directory)
+    working_directory <- paste0(working_directory, "/")
+    
+    if(substr(working_directory, 1, 12) == "Working in: "){
+      working_directory <- substr(working_directory, 13, nchar(working_directory))
+    }
+    
+    if(grepl(working_directory, file_path_t)){
+      return(gsub(working_directory, "", file_path_t))
+    }else{
+      return(file_path)
+    }
+      
+    
+    
+  }
+   
 }
 
 #This is the GUI function
@@ -496,12 +533,12 @@ recplot_UI <- function(){
     format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
     
     if(system == "Windows"){
-      print("Pysam is unavailable on windows OS. You will be unable to process BAM format reads.")
+      cat("Pysam is unavailable on windows OS. You will be unable to process BAM format reads.\n")
     }else{
       if(py_module_available("pysam") == T){
         format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
       }else{
-        print("Your OS supports pysam, but you do not have it installed. Try 'pip install pysam' on the command line.")
+        cat("Your OS supports pysam, but you do not have it installed. Try 'pip install pysam' on the command line.\n")
       }
     }
     
@@ -511,32 +548,49 @@ recplot_UI <- function(){
   #UI
   {  
     ui <- fluidPage(
+      tags$head(
+        tags$style(
+          HTML(".shiny-notification {
+              height: 100px;
+              width: 800px;
+              position:fixed;
+              top: calc(50% - 50px);;
+              left: calc(50% - 400px);;
+            }
+           "
+          )
+        )
+      ),
       
       tabsetPanel(id = "tabs",
                   tabPanel("Database Creation",
                            fluidRow(
+                             #todo       
+
                              column(1),
-                             column(5, 
+                             column(4, 
                                     h2("Create a new Database"),
                                     actionButton('dir', '(1) Choose Directory', icon = icon("folder-open")),
-                                    textInput("cur_dir",label = NULL, value = paste("Working in:", getwd())),
+                                    
+                                    textInput("cur_dir",label = NULL, value = paste("Working in:", getwd()), width = '100%'),
+                                    
                                     br(),
                                     actionButton('contigs', '(2) Select Contigs', icon = icon("file-upload")),
-                                    textInput("contig_file",label = NULL, value = "No contigs selected."),
+                                    textInput("contig_file",label = NULL, value = "No contigs selected.", width = '100%'),
                                     br(),
                                     
                                     actionButton('reads', '(3) Select Reads', icon = icon("file-upload")),
-                                    textInput("read_file",label = NULL, value = "No mapped read file selected."),
-                                    selectInput('fmt', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
+                                    textInput("read_file",label = NULL, value = "No mapped read file selected.", width = '100%'),
+                                    selectInput('fmt', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices, width = '100%'),
                                     br(),
                                     
                                     actionButton('mags', '(Optional) Association File', icon = icon("file-upload")),
                                     actionButton("what_are_mags", "Info", icon = icon("question-circle")),
-                                    textInput("mag_file",label = NULL, value = "No association file selected."),
+                                    textInput("mag_file",label = NULL, value = "No association file selected.", width = '100%'),
                                     br(),
                                     
                                     
-                                    textInput("dbname",label = "(4) Name the database", value = "Enter name here."),
+                                    textInput("dbname",label = "(4) Name the database", value = "Enter name here.", width = '100%'),
                                     br(),
                                     actionButton('db' , "(5) Create database", icon("coins")),
                                     
@@ -551,6 +605,7 @@ recplot_UI <- function(){
                                     bsTooltip("dbname", "Name your database. A .db extension will be added to the end of the name you give it.", placement = "right"),
                                     bsTooltip("db", "Click me after selecting all input files to create your database.", placement = "right")
                              ),
+                             column(1),
                              
                              column(5,
                                     h2("Build Report"),
@@ -564,26 +619,27 @@ recplot_UI <- function(){
                   tabPanel("Database Management",
                            fluidRow(
                              column(1),
-                             column(5, 
+                             column(4, 
                                     h2("Work with an existing database"),
-                                    br(),
                                     actionButton('exist_db', 'Select an existing DB', icon = icon("coins")),
-                                    textInput("exist_dbname",label = NULL, value = "No DB currently selected"),
+                                    textInput("exist_dbname",label = NULL, value = "No DB currently selected", width = '100%'),
                                     br(),
                                     h4("Add More Reads"),
                                     actionButton('add_sample', 'Select another sample to add?', icon = icon("file-upload")),
-                                    textInput("add_samp",label = NULL, value = "No new sample to add."),
-                                    selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices),
+                                    actionButton("show_samps", "Show Samples", icon = icon("question-circle")),
+                                    textInput("add_samp",label = NULL, value = "No new sample to add.", width = '100%'),
+                                    selectInput('fmt_add', 'Mapped Read Format', selected = "Tabular BLAST", choices = format_choices, width = '100%'),
                                     actionButton('new_samp_commit', "Add this sample to the DB", icon = icon("coins")),
                                     br(),
                                     br(),
                                     h4("Add Genes"),
                                     actionButton('add_genes', 'Add genes to database?', icon = icon("file-upload")),
-                                    textInput("add_gen", label = NULL, value = "No genes to add."),
-                                    selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices),
+                                    textInput("add_gen", label = NULL, value = "No genes to add.", width = '100%'),
+                                    selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices, width = '100%'),
                                     actionButton('genes_commit', "Add these genes to the DB", icon = icon("coins")),
                                     br(),
-                                    selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes")),
+                                    br(),
+                                    selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes"), width = '100%'),
                                     
                                     bsTooltip("exist_db", "Select a database previously created with Recruitment Plot.", placement = "right"),
                                     bsTooltip("add_sample", "(Optional) Select another set of reads mapped to the same contigs to be added to the database.", placement = "right"),
@@ -591,11 +647,12 @@ recplot_UI <- function(){
                                     bsTooltip("add_genes", "(Optional) Add genes for existing contigs.", placement = "right"),
                                     bsTooltip("fmt_gen", "Select the format of the genes to be added to the existing database. Currently only Prodigal GFF format is supported.", placement = "right"),
                                     bsTooltip("new_samp_commit", "Once you have selected another set of mapped reads to add and chosen the format, click this to add the sample. The sample will not be added until you do.", placement = "right"),
-                                    bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right")
+                                    bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right"),
+                                    bsTooltip("show_samps", "Display all samples currently in the selected database. Requires a DB to be selected first.", placement = "right")
                                     
                                     
                              ),
-                             
+                             column(1),
                              column(5,
                                     h2("Database Status"),
                                     verbatimTextOutput("message2")
@@ -743,7 +800,7 @@ recplot_UI <- function(){
 
 recplot_server <- function(input, output, session) {
   
-  initial_message <- "Welcome to Recruitment Plot!\nThis page allows you to take contigs and reads and create a database.\nPlease select the appropriate files using the options on the left.\nFile selection windows may pop up in the background, so please check!"
+  initial_message <- "Welcome to Recruitment Plot!\nThis page allows you to take contigs and reads and create a database.\nPlease select the appropriate files using the options on the left.\nFile selection windows may pop up in the background, so please check!\n\nWhen you create your database, the Build Report will grey out for a short time - this is not an error.\nYour database is being built and the report will notify you when it has completed.\nIf the whole screen greys out, an error has occurred."
   initial_message2 <- "This page is for selecting an existing database to plot, or modifying an existing one.\nIf you just created a database, it should be loaded here.\nYou can add more mapped reads or genes to the database here."
   
   
@@ -751,8 +808,8 @@ recplot_server <- function(input, output, session) {
   output$message2 <- renderText(initial_message2)
   
   directory <- "No directory selected. Try again?"
-  reads <- "No file selected. Try again?"
-  contigs <- "No file selected. Try again?"
+  reads <- "No reads selected. Try again?"
+  contigs <- "No genomes selected. Try again?"
   mags <- "No association file selected. Try again?"
   new_samp <- "No new sample. Try again?"
   db <- "No existing database selected. Try again?"
@@ -775,6 +832,28 @@ recplot_server <- function(input, output, session) {
     initial_message <<- paste0(initial_message, "\n\nRecruitment plots were originally designed with metagenomes in mind.\nIn the case that a genome of interest is divided into several discrete genome\nsegments, the segments must be associated with the genome they all belong to.\nThe association file tells the recruitment plot that it should place these segments on the same plot.\nCheck the documentation for help with creating an association file for your contigs.\nIf you don't supply an association file, then a placeholder will be generated from your contigs\nand the recruitment plot will still function. Note: you still need to select contigs first.\n")
     
     output$message <- renderText(initial_message)
+    
+    
+  })
+  
+  observeEvent(input$show_samps, {
+    
+    if(input$exist_dbname == "No existing database selected. Try again?" | input$exist_dbname == "No DB currently selected" | input$exist_dbname == "" ){
+      
+      initial_message2 <<- paste0(initial_message2, "\nYou need to select a database before I can show you the samples inside it.")
+      
+      output$message2 <- renderText(initial_message2)
+      
+    }else{
+      
+      samps <- unlist(assess_samples(input$exist_dbname))
+      
+      samps <- paste0(samps, collapse = "\n")
+      
+      initial_message2 <<- paste0(initial_message2, "\n\nSamples currently in the database:\n", samps)
+      
+      output$message2 <- renderText(initial_message2)
+    }
     
     
   })
@@ -808,7 +887,7 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$dir, {
     
     tryCatch({
-      directory <<- choose.dir()
+      directory <<- choose_directory()
     },
     error = function(cond){
       directory <<- "No directory selected. Try again?"
@@ -823,42 +902,76 @@ recplot_server <- function(input, output, session) {
       return(directory)
     })
     
-    updateTextInput(session, "cur_dir", value = paste("Working in:", directory))
+    if(length(directory) == 0){
+      directory <<- "No directory selected. Try again?"
+    }
+    
+    
+    if(directory == "No directory selected. Try again?"){
+      updateTextInput(session, "cur_dir", value = paste(directory))
+    }else{
+      updateTextInput(session, "cur_dir", value = paste("Working in:", directory))
+    }
     
   })
   
   observeEvent(input$reads, {
     tryCatch({
-      reads <- file.choose(new = T)
+      reads <- choose_file(caption = "Select Mapped Reads")
     },
     error = function(cond){
-      reads <- "No file selected. Try again?"
+      reads <- "No reads selected. Try again?"
       return(reads)
     })
+    
+    if(length(reads) == 0){
+      reads <- "No reads selected. Try again?"
+    }
+    
+    updateSelectInput(session, "fmt", selected = "blast")
+    
     updateTextInput(session, "read_file", value = reads)
+    
+    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".sam"){
+      updateSelectInput(session, "fmt", selected = "sam")
+    }
+    
+    #Don't want to try to select a non-choice, so I check for windows just in case
+    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam" & get_sys() != "Windows"){
+      updateSelectInput(session, "fmt", selected = "bam")
+    }
+
     
   })
   
   observeEvent(input$contigs, {
     tryCatch({
-      contigs <- file.choose(new = T)
+      contigs <- choose_file(caption = "Select Reference Genomes")
     },
     error = function(cond){
-      contigs <- "No file selected. Try again?"
+      contigs <- "No genomes selected. Try again?"
       return(contigs)
     })
+    
+    if(length(contigs) == 0){
+      contigs <- "No genomes selected. Try again?"
+    }
     
     updateTextInput(session, "contig_file", value = contigs)
   })
   
   observeEvent(input$mags, {
     tryCatch({
-      mags <- file.choose(new = T)
+      mags <- choose_file(caption = "Select Contig-Genome Association File")
     },
     error = function(cond){
-      mags <- "No file selected. Try again?"
+      mags <- "No association file selected. Try again?"
       return(mags)
     })
+    if(length(mags) == 0){
+      mags <- "No association file selected. Try again?"
+    }
+    
     updateTextInput(session, "mag_file", value = mags)
   })
   
@@ -869,10 +982,10 @@ recplot_server <- function(input, output, session) {
     has_contigs = F
     
     #check to make sure that inputs are set and exist:
-    if(input$read_file == "No mapped read file selected."){
+    if(input$read_file == "No reads selected." | input$read_file == "No reads selected. Try again?"){
       ready_to_make <- F
     }
-    if(input$contig_file == "No contigs selected."){
+    if(input$contig_file == "No genomes selected." | input$contig_file == "No genomes selected. Try again?"){
       ready_to_make <- F
     }
     if(input$mag_file == "No association file selected." | input$mag_file == "No association file selected. Try again?"){
@@ -894,11 +1007,6 @@ recplot_server <- function(input, output, session) {
       #Update input waits to update the input until the end of the function
       #The name of the MAGs file has to be fed manually here.
       
-      parse_to_mags_identical(input$contig_file, paste("automatically_generated_mags.txt"))
-      updateTextInput(session, "mag_file", value = "automatically_generated_mags.txt")
-      
-      initial_message <<- paste0(initial_message, "\nMAGs file generated automatically!")
-      output$message <- renderText(initial_message)
       
       if(!ready_to_make){
         initial_message <<- paste0(initial_message, "\nNot all files have been selected or the files cannot be found. Please select a set of reads and contigs")
@@ -908,7 +1016,7 @@ recplot_server <- function(input, output, session) {
       }
       
       
-      if(input$dbname == "Enter name here.."){
+      if(input$dbname == "Enter name here."){
         initial_message <<- paste0(initial_message, "\nThe database needs a name. Please give it one!")
         
         output$message <- renderText(initial_message)
@@ -916,26 +1024,48 @@ recplot_server <- function(input, output, session) {
       }
       
       if(!ready_to_make){
-        initial_message <<- paste0(initial_message, "\nNot all files selected seem to be found, or the database hasn't been given a name. Please select files and Enter name here.")
+        #initial_message <<- paste0(initial_message)
         
         output$message <- renderText(initial_message)
       }else{
+        #if no MAGs file supplied, do this
+        
+        #Create 1 to 1 contig to contig mags file.
+        parse_to_mags_identical(input$contig_file, paste("automatically_generated_mags.txt"))
+        updateTextInput(session, "mag_file", value = "automatically_generated_mags.txt")
+        
+        initial_message <<- paste0(initial_message, "\n\nMAGs file generated automatically!")
+        output$message <- renderText(initial_message)
+        
+        
         initial_message <<- paste0(initial_message, "\nDatabase in creation. Please wait...")
         
         output$message <- renderText(initial_message)
         
-        sqldb_creation(contigs = input$contig_file, mags = "automatically_generated_mags.txt", sample_reads = list(input$read_file), map_format = input$fmt, database = paste0(input$dbname, ".db"))
+        #User feedback bar
+        input_bigness <- hms(max(ceiling(round(file.size(input$read_file)/(1024^2)/15, 1)), 5))
+        progress <- shiny::Progress$new()
+        on.exit(progress$close())
+        progress$set(message = "Making Database", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
         
+        
+        sqldb_creation(contigs = input$contig_file, mags = "automatically_generated_mags.txt", sample_reads = list(path_simplifier(input$cur_dir, input$read_file)), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
+        
+        
+        #Gets rid of the silly non-progress bar
+        progress$set(message = "Making Database", value = 1)
+        
+        updateTextInput(session, "dbname", value = gsub(" ", "_", input$dbname))
         
         initial_message <<- paste0(initial_message, "\nDatabase Built! You're done on this page.\nPlease go to the database management tab.")
         
-        initial_message2 <<- paste0(initial_message2, "\n\nI have the database you just built loaded in.\nYou can go to view plots now, or add to it.")
+        initial_message2 <<- paste0(initial_message2, "\n\nI have the database you just built loaded in.\nYou can go to view plots now, or add to it.\n")
         
         
         output$message <- renderText(initial_message)
         output$message2 <- renderText(initial_message2)
         
-        updateTextInput(session, "exist_dbname", value = paste0(input$dbname, ".db"))
+        updateTextInput(session, "exist_dbname", value = paste0(gsub(" ", "_", input$dbname), ".db"))
         
       }
       
@@ -958,23 +1088,33 @@ recplot_server <- function(input, output, session) {
       }
       
       if(!ready_to_make){
-        initial_message <<- paste0(initial_message, "\nNot all files selected seem to be found, or the database hasn't been given a name. Please select files and Enter name here.")
+        #initial_message <<- paste0(initial_message)
         
         output$message <- renderText(initial_message)
       }else{
-        initial_message <<- paste0(initial_message, "\nDatabase in creation. Please wait...")
+        initial_message <<- paste0(initial_message, "\n\nDatabase in creation. Please wait...")
         
         output$message <- renderText(initial_message)
         
-        sqldb_creation(contigs = input$contig_file, mags = input$mag_file, sample_reads = list(input$read_file), map_format = input$fmt, database = paste0(input$dbname, ".db"))
+        #User feedback bar
+        input_bigness <- hms(max(ceiling(round(file.size(input$read_file)/(1024^2)/15, 1)), 5))
+        progress <- shiny::Progress$new()
+        on.exit(progress$close())
+        progress$set(message = "Making Database", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
         
+        sqldb_creation(contigs = input$contig_file, mags = input$mag_file, sample_reads = list(path_simplifier(input$cur_dir, input$read_file)), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
+        
+        #Gets rid of the silly non-progress bar
+        progress$set(message = "Making Database", value = 1)
+        
+        #No spaces allowed
+        updateTextInput(session, "dbname", value = gsub(" ", "_", input$dbname))
         
         initial_message <<- paste0(initial_message, "\nDatabase Built!")
         
-        
         output$message <- renderText(initial_message)
         
-        updateTextInput(session, "exist_dbname", value = paste0(input$dbname, ".db"))
+        updateTextInput(session, "exist_dbname", value = paste0(gsub(" ", "_", input$dbname), ".db"))
         
       }
     }
@@ -985,12 +1125,16 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$exist_db,{
     
     tryCatch({
-      db <- file.choose(new = T)
+      db <- choose_file(caption = "Select an Existing Recruitment Plot Database")
     },
     error = function(cond){
       db <- "No existing database selected. Try again?"
       return(db)
     })
+    
+    if(length(db) == 0){
+      db <- "No existing database. Try again?"
+    }
     
     updateTextInput(session, "exist_dbname", value = db)
     
@@ -1008,14 +1152,30 @@ recplot_server <- function(input, output, session) {
     }
     
     tryCatch({
-      new_samp <- file.choose(new = T)
+      new_samp <- choose_file(caption = "Select Additional Mapped Reads to Add")
     },
     error = function(cond){
       new_samp <- "No new sample. Try again?"
       return(new_samp)
     })
     
+    if(length(new_samp) == 0){
+      new_samp <- "No new sample. Try again?"
+    }
+    
+    
     updateTextInput(session, "add_samp", value = new_samp)
+    
+    updateSelectInput(session, "fmt_add", selected = "blast")
+    
+    if(tolower(substr(new_samp, nchar(new_samp)-3, nchar(new_samp))) == ".sam"){
+      updateSelectInput(session, "fmt_add", selected = "sam")
+    }
+    
+    #Don't want to try to select a non-choice, so I check for windows just in case
+    if(tolower(substr(new_samp, nchar(new_samp)-3, nchar(new_samp))) == ".bam" & get_sys() != "Windows"){
+      updateSelectInput(session, "fmt_add", selected = "bam")
+    }
     
   })
   
@@ -1038,8 +1198,19 @@ recplot_server <- function(input, output, session) {
       
     }
     
+    initial_message2 <<- paste0(initial_message2, "\nAdding sample...")
     
-    add_sample(input$exist_dbname, list(input$add_samp), input$fmt_add)
+    output$message2 <- renderText(initial_message2)
+    
+    #User feedback bar
+    input_bigness <- hms(max(ceiling(round(file.size(input$add_samp)/(1024^2)/15, 1)), 5))
+    progress <- shiny::Progress$new()
+    on.exit(progress$close())
+    progress$set(message = "Adding Sample", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
+    
+    add_sample(input$exist_dbname, list(path_simplifier(input$cur_dir, input$add_samp)), input$fmt_add)
+    
+    progress$set(message = "Adding Sample", value = 1)
     
     initial_message2 <<- paste0(initial_message2, "\nSample added!")
     
@@ -1061,7 +1232,7 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$add_genes,{
     
     #Add a don't-do-this if there's not a selected DB
-    if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?"){
+    if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?" | input$exist_dbname == "No DB currently selected"){
       initial_message2 <<- paste0(initial_message2, "\nYou have to select an existing database first.")
       
       output$message2 <- renderText(initial_message2)
@@ -1070,12 +1241,16 @@ recplot_server <- function(input, output, session) {
     }
     
     tryCatch({
-      new_genes <- file.choose(new = T)
+      new_genes <- choose_file(caption = "Select Annotated Genes to Add")
     },
     error = function(cond){
       new_genes <- "No genes selected. Try again?"
       return(new_genes)
     })
+    
+    if(length(new_genes) == 0){
+      new_genes <- "No genes selected. Try again?"
+    }
     
     updateTextInput(session, "add_gen", value = new_genes)
     
@@ -1101,7 +1276,7 @@ recplot_server <- function(input, output, session) {
     }
     
     
-    add_genes_to_db(input$exist_dbname, input$add_gen, input$fmt_gen)
+    add_genes_to_db(input$exist_dbname, path_simplifier(input$cur_dir, input$add_gen), input$fmt_gen)
     
     initial_message2 <<- paste0(initial_message2, "\nGenes added!")
     
@@ -1238,14 +1413,18 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$print_stat, {
     
     if(is.na(plotting_materials)[1]){
-      print("Cannot plot an unloaded mag!")
+      cat("Cannot plot an unloaded mag!\n")
       return(NA)
     }else{
       
       if(input$pdf_name == ""){
-        print("I need a name first!")
+        cat("I need a name first!\n")
         return(NA)
       }else{
+        
+        progress <- shiny::Progress$new()
+        on.exit(progress$close())
+        progress$set(message = "Printing plot to PDF", value = 0.3, detail = "Please be patient. Creating Plot.")
         
         base <- one_mag()
         
@@ -1348,11 +1527,16 @@ recplot_server <- function(input, output, session) {
           rel_heights = c(0.1, 1)
         )
         
+        progress$set(message = "Printing plot to PDF", value = 0.66, detail = "Plot created. Printing to PDF")
+        
         pdf(paste0(input$pdf_name, ".pdf"), height = 11, width = 17)
         
         print(static_plot)
         
         dev.off()
+        
+        
+        progress$set(message = "Printing plot to PDF", value = 1, detail = "Please be patient.")
         
         
       }
@@ -1379,6 +1563,10 @@ recplot_server <- function(input, output, session) {
   
   output$read_recruitment_plot <- renderPlot({
     
+    progress <- shiny::Progress$new()
+    on.exit(progress$close())
+    progress$set(message = "Creating Recruitment Plot", value = 0.5, detail = "Please be patient")
+    
     base <- one_mag()
     
     req(!is.na(base))
@@ -1403,8 +1591,9 @@ recplot_server <- function(input, output, session) {
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank())
+
         
-        #warning_plot <- ggplotly(warning_plot)
+        progress$set(message = "Creating Recruitment Plot", value = 0.5, detail = "Please be patient.")
         
         return(warning_plot)
       }
@@ -1501,6 +1690,8 @@ recplot_server <- function(input, output, session) {
         )
       }
       
+      progress$set(message = "Creating Recruitment Plot", value = 1, detail = "Please be patient")
+      
       return(static_plot)
       
     }
@@ -1517,12 +1708,18 @@ recplot_server <- function(input, output, session) {
                                       ends = ending
     )
     
+    progress$set(message = "Creating Recruitment Plot", value = 1, detail = "Please be patient")
+    
     return(static_plot)
   })
   
   #Hover plots
   
   output$Plotly_read_rec<-renderPlotly({
+    
+    progress <- shiny::Progress$new()
+    on.exit(progress$close())
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.33, detail = "Please be patient. The interactive plots take longer.")
     
     base <- one_mag()
     
@@ -1581,6 +1778,8 @@ recplot_server <- function(input, output, session) {
                 axis.ticks = element_blank())
         
         warning_plot <- ggplotly(warning_plot)
+        
+        progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Please be patient. The interactive plots take longer.")
         
         return(warning_plot)
       }
@@ -1688,6 +1887,9 @@ recplot_server <- function(input, output, session) {
         geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
     }
+    
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.66, detail = "Adding interactive elements.")
     
     read_rec_plot <- ggplotly(p, dynamicTicks = T, tooltip = c("text")) %>% 
       layout(plot_bgcolor = "grey90") %>% 
@@ -1926,6 +2128,16 @@ recplot_server <- function(input, output, session) {
       updateSelectInput(session, "regions_interact", selected = input$regions_stat)
     }
     
+    
+    
+  })
+    
+  session$onSessionEnded(function() {
+    cat("\nThank you for using Recruitment Plots!\n")
+    cat("Any databases you created or plots you made are stored in:")
+    cat(getwd())
+    cat("\n")
+    stopApp()
   })
   
 }
