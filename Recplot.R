@@ -507,7 +507,7 @@
     if (exists('choose.files')) {
       choose.files(caption = caption, multi = F)
     } else {
-      file.choose(new = T)
+      file.choose(new = F)
     }
   }
   
