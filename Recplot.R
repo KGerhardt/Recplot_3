@@ -533,6 +533,7 @@
    
 }
 
+
 #This is the GUI function
 recplot_UI <- function(){
   #System/choices issue
@@ -575,7 +576,7 @@ recplot_UI <- function(){
                   tabPanel("Database Creation",
                            fluidRow(
                              #todo       
-
+                             
                              column(1),
                              column(4, 
                                     h2("Create a new Database"),
@@ -689,12 +690,12 @@ recplot_UI <- function(){
                              
                              conditionalPanel(condition = "input.task == 'contigs'",
                                               
-                             numericInput("width", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
+                                              numericInput("width", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
                                               
                              ),
                              conditionalPanel(condition = "input.task == 'genes'",
                                               
-                             selectInput("regions_stat", "(5) Display Control", choices = c("Genes Only" = 1, "Intergenic Regions Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                                              selectInput("regions_stat", "(5) Display Control", choices = c("Genes Only" = 1, "Intergenic Regions Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
                                               
                              ),
                              
@@ -755,7 +756,7 @@ recplot_UI <- function(){
                              
                              h3("Select Bin Resolution"),
                              
-
+                             
                              
                              numericInput("height_interact", "(3) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
                              
@@ -763,13 +764,13 @@ recplot_UI <- function(){
                              
                              conditionalPanel(condition = "input.task == 'contigs'",
                                               
-                             numericInput("width_interact", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
+                                              numericInput("width_interact", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
                                               
                              ),
-
+                             
                              conditionalPanel(condition = "input.task == 'genes'",
                                               
-                             selectInput("regions_interact", "(5) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                                              selectInput("regions_interact", "(5) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
                                               
                              ),
                              
@@ -793,8 +794,7 @@ recplot_UI <- function(){
                            ),
                            mainPanel(
                              column(12, 
-                                    plotlyOutput("Plotly_seq_depth", height = "286px"),
-                                    plotlyOutput("Plotly_read_rec", height = "574px")
+                                    plotlyOutput("Plotly_interactive", height = "850px")
                              )
                            )
                   )
@@ -832,6 +832,7 @@ recplot_server <- function(input, output, session) {
   
   samples_in_db <- "No database selected or built yet."
   
+  #TODO - this is the contig end cutoff that removes the first & last 75 bp from consideration in avg. depth.
   #These will need to be later incorporated into the interactive inputs
   trunc_degree <- as.integer(75)
   
@@ -949,7 +950,7 @@ recplot_server <- function(input, output, session) {
     if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam" & get_sys() != "Windows"){
       updateSelectInput(session, "fmt", selected = "bam")
     }
-
+    
     
   })
   
@@ -1142,7 +1143,7 @@ recplot_server <- function(input, output, session) {
     })
     
     if(length(db) == 0){
-      db <- "No existing database. Try again?"
+      db <- "No existing database selected. Try again?"
     }
     
     updateTextInput(session, "exist_dbname", value = db)
@@ -1466,7 +1467,7 @@ recplot_server <- function(input, output, session) {
         
         if(input$task == "genes"){
           
-  
+          
           
           #Genes only
           if(input$regions_stat == 1){
@@ -1587,7 +1588,7 @@ recplot_server <- function(input, output, session) {
   
   #Static plots
   
-  output$read_recruitment_plot <- renderPlot({
+  output$read_recruitment_plot <- renderPlot(suppressWarnings({
     
     progress <- shiny::Progress$new()
     on.exit(progress$close())
@@ -1617,7 +1618,7 @@ recplot_server <- function(input, output, session) {
                 axis.title = element_blank(),
                 axis.text = element_blank(),
                 axis.ticks = element_blank())
-
+        
         
         progress$set(message = "Creating Recruitment Plot", value = 0.5, detail = "Please be patient.")
         
@@ -1695,13 +1696,13 @@ recplot_server <- function(input, output, session) {
       
       if(sum(!is.na(base$bp_count)) == 0){
         static_plot <- ggplot(data.table(1, 1), aes(x = 1, y = 1, label = "No regions with valid counts were detected.\nIt's possible that no genes were\npredicted for this genome."))+
-                       geom_text() +
-                       theme(plot.background = element_blank(),
-                             axis.text = element_blank(),
-                             axis.title = element_blank(),
-                             axis.ticks = element_blank(),
-                             axis.line = element_blank(),
-                             panel.grid = element_blank())
+          geom_text() +
+          theme(plot.background = element_blank(),
+                axis.text = element_blank(),
+                axis.title = element_blank(),
+                axis.ticks = element_blank(),
+                axis.line = element_blank(),
+                panel.grid = element_blank())
       }else{
         static_plot <- create_static_plot(base = base,
                                           bp_unit = bp_unit,
@@ -1738,15 +1739,18 @@ recplot_server <- function(input, output, session) {
     
     return(static_plot)
     
-  })
+  }))
   
   #Hover plots
   
-  output$Plotly_read_rec<-renderPlotly({
+  output$Plotly_interactive <- renderPlotly({
+    
+    #Reset this each time to make checking for it more consistent.
+    warning_plot <- NA
     
     progress <- shiny::Progress$new()
     on.exit(progress$close())
-    progress$set(message = "Creating interactive Recruitment Plot", value = 0.33, detail = "Please be patient. The interactive plots take longer.")
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.16, detail = "Please be patient. The interactive plots take longer.")
     
     base <- one_mag()
     
@@ -1763,7 +1767,7 @@ recplot_server <- function(input, output, session) {
     ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
     
     if(input$task == "contigs"){
-      #Sets any starts < trunc degree to trunc_degree
+      
       base <- base[Start < trunc_degree, Start := trunc_degree]
       #Selects the bins at the end of each contig and subtracts trunc degree from it
       base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
@@ -1793,10 +1797,51 @@ recplot_server <- function(input, output, session) {
                  ymax = 100, fill = "darkblue", alpha = .15)+
         geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
+      
+      base <- old_base
+      
+      #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
+      base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
+      
+      setkeyv(base, c("group_label", "seq_pos"))
+      
+      depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
+      colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
+      
+      group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
+      
+      old_depth <- depth_data
+      
+      depth_data$count[depth_data$count == 0] <- NA
+      
+      #If bins need deleted at ends of contigs, this does so
+      depth_data <- depth_data[Start <= End, ]
+      
+      seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
+                                                                                                                               "\nPos. in Contig: ", Start, "-", End,
+                                                                                                                               "\nSeq. Depth: ", round(count))))+
+        geom_step(alpha = 0.75) +
+        scale_y_continuous(trans = "log10") +
+        scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
+        theme(legend.position = "none", 
+              panel.border = element_blank(), 
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              axis.line = element_line(colour = "black"), 
+              panel.background = element_blank(), 
+              axis.title.x = element_blank(), 
+              #axis.text.y = element_text(angle = 90, hjust = 0.5),
+              axis.title = element_text(size = 14),
+              axis.text = element_text(size = 14)) +
+        scale_color_manual(values = group.colors) +
+        ylab("Log 10 Depth")
+      
+      
     }else{
       
       if(is.na(gene_data)){
         
+        #Check if there was a switch from contigs to genes without reloading
         warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = "This is not an error message.\nIt seems you switched from viewing contigs to genes.\nYour Recruitment Plot needs the gene data.\nPlease hit the 'View Selected Genome' button again."))+
           geom_text() +
           theme(panel.background = element_blank(),
@@ -1809,7 +1854,26 @@ recplot_server <- function(input, output, session) {
         progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Please be patient. The interactive plots take longer.")
         
         return(warning_plot)
+        
+        
       }
+      
+      #fixup alterations
+      gene_reset <- gene_data
+      
+      #read rec plot
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      #If the final bin was too small, removes it.
+      base <- base[Start <= End,]
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
+      
       
       #Genes only
       if(input$regions_interact == 1){
@@ -1913,94 +1977,31 @@ recplot_server <- function(input, output, session) {
                  ymax = 100, fill = "darkblue", alpha = .15)+
         geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
-    }
-    
-    
-    progress$set(message = "Creating interactive Recruitment Plot", value = 0.66, detail = "Adding interactive elements.")
-    
-    read_rec_plot <- ggplotly(p, dynamicTicks = T, tooltip = c("text")) %>% 
-      layout(plot_bgcolor = "grey90") %>% 
-      style(hoverinfo = "none", traces = c(1, 2)) 
-    
-    return(read_rec_plot)
-    
-  })
-  
-  output$Plotly_seq_depth <- renderPlotly({
-    
-    base <- one_mag()
-    
-    req(!is.na(base))
-    
-    bp_unit <- base[[2]]
-    bp_div <- base[[3]]
-    pos_max <- base[[4]]
-    base <- base[[1]]
-    
-    base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.in", "depth.out")
-    
-    
-    #Sets any starts < trunc degree to trunc_degree
-    base <- base[Start < trunc_degree, Start := trunc_degree]
-    #Selects the bins at the end of each contig and subtracts trunc degree from it
-    base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
-
-    
-    setkeyv(base, c("group_label", "seq_pos"))
-    
-    depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
-    colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
-    
-    group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
-    
-    old_depth <- depth_data
-    
-    #nil_depth_data <- depth_data[count == 0]
-    #nil_depth_data$group_label <- ifelse(nil_depth_data$group_label == "depth.in", "depth.in.nil", "depth.out.nil")
-    
-    #seg_upper_bound <- min(depth_data$count[depth_data$count > 0])
-    
-    depth_data$count[depth_data$count == 0] <- NA
-    
-    if(input$task == "contigs"){
+      
+      
+      #seqdepth chart
+      base <- old_base
+      
+      #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
+      base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
+      
+      setkeyv(base, c("group_label", "seq_pos"))
+      
+      depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
+      colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
+      
+      group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
+      
+      old_depth <- depth_data
+      
+      depth_data$count[depth_data$count == 0] <- NA
       
       #If bins need deleted at ends of contigs, this does so
       depth_data <- depth_data[Start <= End, ]
       
-      seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
-                                                                                                                               "\nPos. in Contig: ", Start, "-", End,
-                                                                                                                               "\nSeq. Depth: ", round(count))))+
-        geom_step(alpha = 0.75) +
-        scale_y_continuous(trans = "log10") +
-        scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
-        theme(legend.position = "none", 
-              panel.border = element_blank(), 
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(), 
-              axis.line = element_line(colour = "black"), 
-              panel.background = element_blank(), 
-              axis.title.x = element_blank(), 
-              #axis.text.y = element_text(angle = 90, hjust = 0.5),
-              axis.title = element_text(size = 14),
-              axis.text = element_text(size = 14)) +
-        scale_color_manual(values = group.colors) +
-        ylab("Log 10 Depth")
-    }else{
       
-      if(is.na(gene_data)){
-        
-        warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = ""))+
-          geom_text() +
-          theme(panel.background = element_blank(),
-                axis.title = element_blank(),
-                axis.text = element_blank(),
-                axis.ticks = element_blank())
-        
-        warning_plot <- ggplotly(warning_plot)
-        
-        return(warning_plot)
-      }
-      
+      #reset
+      gene_data <- gene_reset
       
       gene_data <- rbind(gene_data, gene_data)
       
@@ -2112,15 +2113,29 @@ recplot_server <- function(input, output, session) {
     }
     
     a <- list(
-      range = c(10^min(depth_data$count, na.rm = T), 10^max(depth_data$count, na.rm = T)),
+      range = c(min(depth_data$count, na.rm = T), max(depth_data$count, na.rm = T)),
       showticklabels = TRUE,
       exponentformat = "e"
     )
     
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.5, detail = "Plots created. Making first plot interactive...")
+    
     seq_depth_chart <- ggplotly(seq_depth_chart, dynamicTicks = T, tooltip = c("text")) %>% 
       layout(plot_bgcolor = "grey90", yaxis = a)
     
-    return(seq_depth_chart)
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.66, detail = "Making second plot interactive...")
+    
+    read_rec_plot <- ggplotly(p, dynamicTicks = T, tooltip = c("text")) %>% 
+      layout(plot_bgcolor = "grey90") %>% 
+      style(hoverinfo = "none", traces = c(1, 2))
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.83, detail = "Formatting plots")
+    
+    overplot <- subplot(list(seq_depth_chart, read_rec_plot), nrows = 2, shareX = T, heights = c(1/3, 2/3))
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Done!")
+    
+    return(overplot)
     
   })
   
@@ -2158,7 +2173,7 @@ recplot_server <- function(input, output, session) {
     
     
   })
-    
+  
   session$onSessionEnded(function() {
     cat("\nThank you for using Recruitment Plots!\n")
     cat("Any databases you created or plots you made are stored in:")
@@ -2169,7 +2184,7 @@ recplot_server <- function(input, output, session) {
   
 }
 
-#This is the controller function
+
 recplot_landing_page <- function(){
   
   initiate()
@@ -2182,6 +2197,7 @@ recplot_landing_page <- function(){
   
   
 }
+
 
 recplot_landing_page()
 
