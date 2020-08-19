@@ -70,6 +70,13 @@
     library(easycsv)
   }
   
+  check <- suppressWarnings(suppressMessages(require(shinyalert)))
+  
+  if(!check){
+    install.packages("shinyalert")
+    library(shinyalert)
+  }
+  
   
 }
 
@@ -132,8 +139,6 @@
       
     }  )
   }
-  
-  
   
   #The python import is a space-efficient, but strcutrually awkward data object
   #List of 2 items: list of lists of contig starts, stops, assoc. counts per %ID bin, and %ID bins.
@@ -217,7 +222,7 @@
       ylab("Percent Identity") +
       xlab(paste("Position in Genome", bp_unit)) +
       scale_y_continuous(expand = c(0, 0)) +
-      scale_x_continuous(expand = c(0, 0), limits = c(0, pos_max/bp_div)) +
+      scale_x_continuous(expand = c(0, 0), limits = c(0, pos_max/bp_div), breaks = scales::pretty_breaks(n = 10)) +
       theme(legend.position = "none", 
             axis.line = element_line(colour = "black"),
             axis.title = element_text(size = 14),
@@ -251,7 +256,7 @@
     seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label))+
       geom_step(alpha = 0.75) +
       scale_y_continuous(trans = "log10", labels = scales::scientific) +
-      scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
+      scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div), breaks = scales::pretty_breaks(n = 10))+
       theme(legend.position = "none", 
             panel.border = element_blank(), 
             panel.grid.major = element_blank(),
@@ -396,7 +401,7 @@
         
         p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
           geom_step() +
-          scale_y_continuous(expand = c(0,0)) + 
+          scale_y_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 3)) + 
           scale_x_continuous(expand = c(0,0)) +
           theme(legend.position = "none", 
                 panel.border = element_blank(), 
@@ -415,7 +420,7 @@
         
         p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
           geom_step() +
-          scale_y_continuous(expand = c(0,0), trans = "log10") + 
+          scale_y_continuous(expand = c(0,0), trans = "log10", breaks = scales::log_breaks(n = 4)) + 
           scale_x_continuous(expand = c(0,0)) +
           theme(legend.position = "none", 
                 panel.border = element_blank(), 
@@ -441,6 +446,38 @@
     overall_plot <- plot_grid(seq_depth_chart, seq_depth_hist, read_rec_plot, bp_count_hist, align = "hv", ncol = 2, rel_widths = c(2.7, 1), rel_heights = c(1, 2.3))
     
     return(overall_plot)
+    
+  }
+  
+  create_static_data <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, trunc_behavior = "ends", trunc_degree = as.integer(75), ...){
+
+    
+    #Allows for count normalization by bin width across all bins
+    norm_factor <- min(base$End-base$Start) + 1
+    
+    base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
+    
+    base[, seq_pos := NULL,]
+    
+    base[, id_lower := Pct_ID_bin - id_break, ]
+    
+    base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
+    
+    base <- base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label),]
+    
+    colnames(base) = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
+    
+    setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
+    
+    setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "pct_id_group"))
+    
+    #upper left panel
+    
+    depth_data <- base[, sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), by = key(base)]
+    colnames(depth_data)[ncol(depth_data)] = "average_sequencing_depth"
+    
+    
+    return(list(base, depth_data))
     
   }
   
@@ -558,6 +595,7 @@ recplot_UI <- function(){
   #UI
   {  
     ui <- fluidPage(
+      
       tags$head(
         tags$style(
           HTML(".shiny-notification {
@@ -572,6 +610,8 @@ recplot_UI <- function(){
         )
       ),
       
+      useShinyalert(),
+
       tabsetPanel(id = "tabs",
                   tabPanel("Database Creation",
                            fluidRow(
@@ -586,6 +626,7 @@ recplot_UI <- function(){
                                     
                                     br(),
                                     actionButton('contigs', '(2) Select Reference Genomes', icon = icon("file-upload")),
+                                    checkboxInput("one_mag", label = "This is a single binned genome.", value = F),
                                     textInput("contig_file",label = NULL, value = "No genomes selected.", width = '100%'),
                                     br(),
                                     
@@ -597,6 +638,7 @@ recplot_UI <- function(){
                                     actionButton('mags', '(Optional) Association File', icon = icon("file-upload")),
                                     actionButton("what_are_mags", "Info", icon = icon("question-circle")),
                                     textInput("mag_file",label = NULL, value = "No association file selected.", width = '100%'),
+                                    
                                     br(),
                                     
                                     
@@ -609,6 +651,7 @@ recplot_UI <- function(){
                                     
                                     bsTooltip("dir", "(Optional) Select a working directory. The database and any saved plots will be placed here.", placement = "right"),
                                     bsTooltip("contigs", "Select a FASTA format file containing genome sequences or contigs.", placement = "right"),
+                                    bsTooltip("one_mag", "If you binned an assembly and have a single multi-FASTA containing the sequences for this MAG as your reference genomes, check this box, leave the association file blank, and they will all appear on a single plot.", placement = "right"),
                                     bsTooltip("mags", "Select an association file. This is a file designed to support the visualization of genomes divided into multiple contigs. Click the info button to learn more.", placement = "right"),
                                     bsTooltip("reads", "Select a mapped read file. These reads should be mapped to the genomes in the reference genomes file selected above.", placement = "right"),
                                     bsTooltip("fmt", "Select the format of the mapped reads to be added to the new database.", placement = "right"),
@@ -647,6 +690,7 @@ recplot_UI <- function(){
                                     textInput("add_gen", label = NULL, value = "No genes to add.", width = '100%'),
                                     selectInput('fmt_gen', 'Gene format', selected = "Prodigal GFF", choices = gene_choices, width = '100%'),
                                     actionButton('genes_commit', "Add these genes to the DB", icon = icon("coins")),
+                                    actionButton('check_for_genes', "Check if genes have been added.", icon = icon("question-circle")),
                                     br(),
                                     br(),
                                     selectInput('task', 'Plot contigs or plot genes?', selected = "Contigs", choices = c("Contigs" = "contigs", "Genes" = "genes"), width = '100%'),
@@ -658,7 +702,8 @@ recplot_UI <- function(){
                                     bsTooltip("fmt_gen", "Select the format of the genes to be added to the existing database. Currently only Prodigal GFF format is supported.", placement = "right"),
                                     bsTooltip("new_samp_commit", "Once you have selected another set of mapped reads to add and chosen the format, click this to add the sample. The sample will not be added until you do.", placement = "right"),
                                     bsTooltip("genes_commit", "Once you have selected a set of genes to add and chosen the format (currently only Prodigal GFF), click this to add the genes. The genes will not be added until you do.", placement = "right"),
-                                    bsTooltip("show_samps", "Display all samples currently in the selected database. Requires a database to be selected first.", placement = "right")
+                                    bsTooltip("show_samps", "Display all samples currently in the selected database. Requires a database to be selected first.", placement = "right"),
+                                    bsTooltip("check_for_genes", "Query the database for the presence of genes on the genomes.", placement = "right")
                                     
                                     
                              ),
@@ -686,42 +731,49 @@ recplot_UI <- function(){
                              
                              numericInput("height", "(3) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
                              
-                             numericInput("low_bound", "(4) Minimum Pct. ID", min = 50, max = 95, value = 70),
+                             #numericInput("low_bound", "(4) Minimum Pct. ID", min = 50, max = 95, value = 70),
                              
                              conditionalPanel(condition = "input.task == 'contigs'",
                                               
-                                              numericInput("width", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
+                                              numericInput("width", "(4) Genome Resolution", min = 75, max = 5000, value = 1000)
                                               
                              ),
                              conditionalPanel(condition = "input.task == 'genes'",
                                               
-                                              selectInput("regions_stat", "(5) Display Control", choices = c("Genes Only" = 1, "Intergenic Regions Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                                              selectInput("regions_stat", "(4) Display Control", choices = c("Genes Only" = 1, "Intergenic Regions Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
                                               
                              ),
                              
                              h4("Load Selected Genome"),
                              
-                             actionButton('get_a_mag', '(6) View Selected Genome', icon = icon("jedi-order")),
+                             actionButton('get_a_mag', '(5) View Selected Genome', icon = icon("jedi-order")),
                              
                              h4("Fine Tuning (Interactive)"),
                              
-                             numericInput("in_group_min_stat", "(7) In-Group Pct. ID", min = 50, max = 99.5, value = 90),
-                             selectInput("linear_stat", "(8) BP Histogram Scale", choices = c("Linear" = 1, "Logarithmic" = 2), selected = 1),
+                             numericInput("in_group_min_stat", "(6) In-Group Pct. ID", min = 50, max = 99.5, value = 90),
+                             selectInput("linear_stat", "(7) BP Histogram Scale", choices = c("Linear" = 1, "Logarithmic" = 2), selected = 1),
                              
-                             checkboxInput("show_peaks", "(9) Display Depth Peaks?"),
+                             checkboxInput("show_peaks", "(8) Display Depth Peaks?"),
                              
-                             textInput("pdf_name", "Name and Save?"),
+                             textInput("pdf_name", "Name and save current plot."),
                              actionButton("print_stat", "Save to PDF", icon = icon("save")),
+                             
+                             #todo
+                             actionButton("output_data_stat", "Save raw data", icon = icon("file")),
                              
                              bsTooltip("samples", "This menu contains a list of samples within the database. Select one, and the genome field will be populated with the genomes found in that sample.", placement = "right"),
                              bsTooltip("mags_in_db", "This menu contains the set of genomes in currently selected sample. Select one, then select resolution parameters.", placement = "right"),
                              bsTooltip("width", "Approximate number of base pairs in each genome window. The Recruitment Plot attempts to normalize bin width for each contig to this size. Lower values = higher resolution, but is slower. Higher values = lower resolution, but is faster.", placement = "right"),
                              bsTooltip("height", "Controls the resolution of percent identity to the reference. Lower values here will result in finer resolution, but will be slower. Hint: The default 0.5% window means a resolution of 1 base pair mismatch per 200 bases; finer resolution is probably uneccessary.", placement = "right"),
-                             bsTooltip("low_bound", "Reads mapping below this percent identity will not be included in the current recruitment plot.", placement = "right"),
+                             #bsTooltip("low_bound", "Reads mapping below this percent identity will not be included in the current recruitment plot.", placement = "right"),
                              bsTooltip("get_a_mag", "Click this to load the current Genome into the viewer and plot it. Please wait for the plot to appear after clicking this. This loads the data for all tabs.", placement = "right"),
                              bsTooltip("in_group_min_stat", "Controls the lower edge of the shaded region in the recruitment plot's lower panels. Reads mapping at or above this percent identity are regarded as the \"in-group\" for the Recruitment Plot, and are represented by the dark blue lines in the upper panels.", placement = "right"),
                              bsTooltip("linear_stat", "Causes the lower right panel to display base pair counts per percent identity bin in linear scale or log scale.", placement = "right"),
                              bsTooltip("print_stat", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to print a PDF of the current", placement = "right"),
+                             
+                             #todo
+                             bsTooltip("output_data_stat", "Outputs the data for the current plots to 2 tab-separated files corresponding to the bottom left and top left panels (recruitment and sequencing depth information).", placement = "right"),
+                             
                              bsTooltip("show_peaks", "Calculate and overlay peaks for the depth of coverage histogram (top right panel)", placement = "right"),
                              
                              bsTooltip("regions_stat", "Controls the display of intergenic regions. Default shows only genes, IGR = InterGenic Region. 'Long IGRs' are intergenic regions > 6 bp in length.", placement = "right"),
@@ -760,27 +812,27 @@ recplot_UI <- function(){
                              
                              numericInput("height_interact", "(3) Pct. ID Resolution", min = 0.05, max = 3, value = 0.5),
                              
-                             numericInput("low_bound_interact", "(4) Minimum Pct. ID", min = 50, max = 95, value = 70),
+                             #numericInput("low_bound_interact", "(4) Minimum Pct. ID", min = 50, max = 95, value = 70),
                              
                              conditionalPanel(condition = "input.task == 'contigs'",
                                               
-                                              numericInput("width_interact", "(5) Genome Resolution", min = 75, max = 5000, value = 1000)
+                                              numericInput("width_interact", "(4) Genome Resolution", min = 75, max = 5000, value = 1000)
                                               
                              ),
                              
                              conditionalPanel(condition = "input.task == 'genes'",
                                               
-                                              selectInput("regions_interact", "(5) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
+                                              selectInput("regions_interact", "(4) Display Control", choices = c("Genes Only" = 1, "IGR Only" = 2, "Genes and long IGR" = 3, "All Regions" = 4), selected = 1)
                                               
                              ),
                              
                              h3("Load Selected Genome"),
                              
-                             actionButton('get_a_mag_interact', '(6) View selected Genome', icon = icon("jedi-order")),
+                             actionButton('get_a_mag_interact', '(5) View selected Genome', icon = icon("jedi-order")),
                              
                              h3("Fine Tuning (Interactive)"),
                              
-                             numericInput("in_group_min_interact", "(7) In-Group Pct. ID", min = 50, max = 99.5, value = 95),
+                             numericInput("in_group_min_interact", "(6) In-Group Pct. ID", min = 50, max = 99.5, value = 95),
                              
                              bsTooltip("samples_interact", "This menu contains a list of samples within the database. Select one, and the genome field will be populated with the genomes found in that sample.", placement = "right"),
                              bsTooltip("mags_in_db_interact", "This menu contains the set of genomes in currently selected sample. Select one, then select resolution parameters.", placement = "right"),
@@ -868,6 +920,26 @@ recplot_server <- function(input, output, session) {
     
   })
   
+  observeEvent(input$check_for_genes, {
+    
+    if(input$exist_dbname == "No existing database selected. Try again?" | input$exist_dbname == "No DB currently selected" | input$exist_dbname == "" ){
+      
+      initial_message2 <<- paste0(initial_message2, "\nYou need to select a database before I can check for genes inside it.")
+      
+      output$message2 <- renderText(initial_message2)
+      
+    }else{
+      
+      if(!check_presence_of_genes(input$exist_dbname)){
+        initial_message2 <<- paste0(initial_message2, "\nGenes not detected. You have to add genes to the database\nbefore plotting gene regions and annotations.")
+        
+        output$message2 <- renderText(initial_message2)
+      }
+      
+    }
+    
+  })
+  
   observeEvent(input$task, {
     
     #Add a don't-do-this if there's not a selected DB
@@ -875,7 +947,7 @@ recplot_server <- function(input, output, session) {
       
       if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?" | input$exist_dbname == "No DB currently selected"){
         
-        initial_message2 <<- paste0(initial_message2, "\nYou have to select an existing database before selecting a task.")
+        initial_message2 <<- paste0(initial_message2, "\nYou have to select an existing database before selecting a plotting task.")
         
         output$message2 <- renderText(initial_message2)
         
@@ -883,6 +955,11 @@ recplot_server <- function(input, output, session) {
       }
       
       if(!check_presence_of_genes(input$exist_dbname)){
+        
+        shinyalert("No genes found", "You have to add genes to your database on this tab, first.", type = "error",
+                   callbackR = function() { 
+                     updateSelectInput(session, "task", label = 'Plot contigs or plot genes?', selected = "contigs", choices = c("Contigs" = "contigs", "Genes" = "genes"))
+                   })
         
         initial_message2 <<- paste0(initial_message2, "\nGenes NOT found in database. Have you added them?")
         output$message2 <- renderText(initial_message2)
@@ -1041,12 +1118,22 @@ recplot_server <- function(input, output, session) {
         #if no MAGs file supplied, do this
         
         #Create 1 to 1 contig to contig mags file.
-        parse_to_mags_identical(input$contig_file, paste("automatically_generated_mags.txt"))
-        updateTextInput(session, "mag_file", value = "automatically_generated_mags.txt")
+        parse_to_mags_identical(input$contig_file, paste("automatically_generated_association_file.txt"))
+        updateTextInput(session, "mag_file", value = "automatically_generated_association_file.txt")
         
-        initial_message <<- paste0(initial_message, "\n\nMAGs file generated automatically!")
+        
+        if(input$one_mag){
+          temp <- fread("automatically_generated_association_file.txt", sep = "\t", header = F)
+          temp[, V2 := path_simplifier(input$cur_dir, input$contig_file)]
+          fwrite(temp, "automatically_generated_association_file.txt", sep = "\t", col.names = F)
+          
+          initial_message <<- paste0(initial_message, "\nAll sequences in your genomes file are being treated as part of one genome.")
+          output$message <- renderText(initial_message)
+        }
+        
+        
+        initial_message <<- paste0(initial_message, "\n\nAssociation file generated automatically!")
         output$message <- renderText(initial_message)
-        
         
         initial_message <<- paste0(initial_message, "\nDatabase in creation. Please wait...")
         
@@ -1059,7 +1146,7 @@ recplot_server <- function(input, output, session) {
         progress$set(message = "Making Database", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
         
         
-        sqldb_creation(contigs = input$contig_file, mags = "automatically_generated_mags.txt", sample_reads = list(path_simplifier(input$cur_dir, input$read_file)), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
+        sqldb_creation(contigs = input$contig_file, mags = "automatically_generated_association_file.txt", sample_reads = list(path_simplifier(input$cur_dir, input$read_file)), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
         
         
         #Gets rid of the silly non-progress bar
@@ -1098,7 +1185,6 @@ recplot_server <- function(input, output, session) {
       }
       
       if(!ready_to_make){
-        #initial_message <<- paste0(initial_message)
         
         output$message <- renderText(initial_message)
       }else{
@@ -1364,6 +1450,9 @@ recplot_server <- function(input, output, session) {
   
   observeEvent(input$get_a_mag, {
     if(input$exist_dbname == "No DB currently selected" | input$samples == "Select a sample in the database" | input$mags_in_db == "Select a MAG in the sample"){
+      
+      shinyalert("No database currently loaded", "You must either create a new database or select an existing one first", type = "error")
+      
       recplot_data <- data.frame(placeholder = 1)
     }else{
       
@@ -1371,10 +1460,14 @@ recplot_server <- function(input, output, session) {
       on.exit(progress$close())
       progress$set(message = "Reading Database", value = 0.33, detail = "Please be patient")
       
+      #I decided this wasn't worth having as a selection.
+      lower_bound <- 70
+      
       if(input$task == "contigs"){
-        recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
+        
+        recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, lower_bound)
       }else{
-        recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, input$low_bound)
+        recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, lower_bound)
         gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
         
       }
@@ -1402,6 +1495,8 @@ recplot_server <- function(input, output, session) {
   
   observeEvent(input$get_a_mag_interact, {
     if(input$exist_dbname == "No DB currently selected" | input$samples == "Select a sample in the database" | input$mags_in_db == "Select a MAG in the sample"){
+      shinyalert("No database currently loaded", "You must either create a new database or select an existing one first", type = "error")
+      
       recplot_data <- data.frame(placeholder = 1)
     }else{
       
@@ -1409,10 +1504,12 @@ recplot_server <- function(input, output, session) {
       on.exit(progress$close())
       progress$set(message = "Reading Database", value = 0.33, detail = "Please be patient")
       
+      lower_bound <- 70
+      
       if(input$task == "contigs"){
-        recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, input$low_bound)
+        recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, lower_bound)
       }else{
-        recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, input$low_bound)
+        recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, lower_bound)
         gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
       }
       
@@ -1440,12 +1537,21 @@ recplot_server <- function(input, output, session) {
   observeEvent(input$print_stat, {
     
     if(is.na(plotting_materials)[1]){
-      cat("Cannot plot an unloaded mag!\n")
+      
+      shinyalert("Cannot print plot.", "There is no genome currently loaded. You need to hit 'View Selected Genome' first.", type = "error")
+      
       return(NA)
     }else{
       
       if(input$pdf_name == ""){
-        cat("I need a name first!\n")
+        
+        shinyalert(
+          "The output files need a name.", "You can enter a name here, then hit output data button again.", type = "input",
+          callbackR = function(x) { 
+            updateTextInput(session, "pdf_name", value = x)
+          }
+        )
+        
         return(NA)
       }else{
         
@@ -1573,6 +1679,129 @@ recplot_server <- function(input, output, session) {
     
     
   })
+  
+  observeEvent(input$output_data_stat, {
+    
+    if(is.na(plotting_materials)[1]){
+      
+      shinyalert("Cannot output data.", "There is no genome currently loaded. You need to hit 'View Selected Genome' first.", type = "error")
+      
+      return(NA)
+    }else{
+      
+      if(input$pdf_name == ""){
+        
+        shinyalert(
+          "The output files need a name.", "You can enter a name here, then hit output data button again.", type = "input",
+          callbackR = function(x) { 
+            updateTextInput(session, "pdf_name", value = x)
+            }
+        )
+        
+        return(NA)
+      }else{
+        
+        progress <- shiny::Progress$new()
+        on.exit(progress$close())
+        progress$set(message = "Printing data to tab-separated files", value = 0.3, detail = "Formatting data")
+        
+        base <- one_mag()
+        
+        req(!is.na(base))
+        
+        bp_unit <- base[[2]]
+        bp_div <- base[[3]]
+        pos_max <- base[[4]]
+        base <- base[[1]]
+        
+        ending <- base[, max(End), by = contig]
+        ending[, V1 := cumsum(V1) - 1 + 1:nrow(ending)]
+        
+        if(input$task == "genes"){
+          
+          #Genes only
+          if(input$regions_stat == 1){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+            base[gene_annotation != "N/A", bp_count := NA,]
+          }
+          #IGR only
+          if(input$regions_stat == 2){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+            base[gene_annotation == "N/A", bp_count := NA,]
+          }
+          #Genes + long IGR
+          if(input$regions_stat == 3){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+            base <- base[End-Start+1 < 6, bp_count := NA,]
+          }
+          
+        }
+        
+        plot_data <- create_static_data(base = base,
+                                          bp_unit = bp_unit,
+                                          bp_div = bp_div,
+                                          pos_max = pos_max,
+                                          in_grp_min = input$in_group_min_stat,
+                                          id_break = input$height,
+                                          width = input$width,
+                                          linear = input$linear_stat,
+                                          showpeaks= input$show_peaks,
+                                          ends = ending
+        )
+        
+        progress$set(message = "Printing plot data", value = 0.66, detail = "Writing data")
+        
+        fwrite(plot_data[[1]], paste0(input$pdf_name, "_recruitment_data.tsv"), sep = "\t")
+        fwrite(plot_data[[2]], paste0(input$pdf_name, "_sequencing_depth.tsv"), sep = "\t")
+
+        
+        progress$set(message = "Printing plot data", value = 1, detail = "Done.")
+        
+        
+      }
+      
+    }
+    
+    
+    
+  })
+  
   
   one_mag <- reactive({
     
@@ -1743,7 +1972,7 @@ recplot_server <- function(input, output, session) {
   
   #Hover plots
   
-  output$Plotly_interactive <- renderPlotly({
+  output$Plotly_interactive <- renderPlotly(suppressWarnings({
     
     #Reset this each time to make checking for it more consistent.
     warning_plot <- NA
@@ -2137,7 +2366,7 @@ recplot_server <- function(input, output, session) {
     
     return(overplot)
     
-  })
+  }))
   
   #Consistency between plot panels
   
@@ -2152,7 +2381,7 @@ recplot_server <- function(input, output, session) {
       }
       updateNumericInput(session, "width", value = input$width_interact)
       updateNumericInput(session, "height", value = input$height_interact)
-      updateNumericInput(session, "low_bound", value = input$low_bound_interact)
+      #updateNumericInput(session, "low_bound", value = input$low_bound_interact)
       updateNumericInput(session, "in_group_min_stat", value = input$in_group_min_interact)
       updateSelectInput(session, "regions_stat", selected = input$regions_interact)
     }
@@ -2165,7 +2394,7 @@ recplot_server <- function(input, output, session) {
       }
       updateNumericInput(session, "width_interact", value = input$width)
       updateNumericInput(session, "height_interact", value = input$height)
-      updateNumericInput(session, "low_bound_interact", value = input$low_bound)
+      #updateNumericInput(session, "low_bound_interact", value = input$low_bound)
       updateNumericInput(session, "in_group_min_interact", value = input$in_group_min_stat)
       updateSelectInput(session, "regions_interact", selected = input$regions_stat)
     }
@@ -2184,7 +2413,6 @@ recplot_server <- function(input, output, session) {
   
 }
 
-
 recplot_landing_page <- function(){
   
   initiate()
@@ -2197,7 +2425,6 @@ recplot_landing_page <- function(){
   
   
 }
-
 
 recplot_landing_page()
 
