@@ -8,6 +8,9 @@ import argparse
 import platform
 import importlib
 import bamnostic
+
+def check_bamnostic_exists():
+    print("it do")
 	
 def parse_to_mags_identical(contig_file_name, out_file_name):
     
