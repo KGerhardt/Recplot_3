@@ -85,7 +85,7 @@
   #This will download whatever the current python script is. You have to run it before landing page.
   get_python <- function(){
     
-    source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/recplot_database_carlos_genes.py", envir = globalenv())
+    source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/bamnostic/recplot_bamnostic.py", envir = globalenv())
     
   }
   
@@ -568,24 +568,17 @@
   
 }
 
-
 #This is the GUI function
 recplot_UI <- function(){
   #System/choices issue
   {
     system <- get_sys()
     
-    format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
-    
-    if(system == "Windows"){
-      cat("Pysam is unavailable on windows OS. You will be unable to process BAM format reads.\n")
-    }else{
-      if(py_module_available("pysam") == T){
-        format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
-      }else{
-        cat("Your OS supports pysam, but you do not have it installed. Try 'pip install pysam' on the command line.\n")
-      }
-    }
+    #todo - remove this because it's no longer needed
+    #format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
+
+    format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
+
     
     gene_choices <- c("Prodigal GFF" = "prodigal")
   }
@@ -862,7 +855,6 @@ recplot_server <- function(input, output, session) {
   initial_message <- "Welcome to Recruitment Plot!\nThis page allows you to take contigs and reads and create a database.\nPlease select the appropriate files using the options on the left.\nFile selection windows may pop up in the background, so please check!\n\nWhen you create your database, the Build Report will grey out for a short time - this is not an error.\nYour database is being built and the report will notify you when it has completed.\nIf the whole screen greys out, an error has occurred."
   initial_message2 <- "This page is for selecting an existing database to plot, or modifying an existing one.\nIf you just created a database, it should be loaded here.\nYou can add more mapped reads or genes to the database here."
   
-  
   output$message <- renderText(initial_message)
   output$message2 <- renderText(initial_message2)
   
@@ -1022,7 +1014,7 @@ recplot_server <- function(input, output, session) {
     }
     
     #Don't want to try to select a non-choice, so I check for windows just in case
-    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam" & get_sys() != "Windows"){
+    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam"){
       updateSelectInput(session, "fmt", selected = "bam")
     }
     
@@ -1267,7 +1259,7 @@ recplot_server <- function(input, output, session) {
     }
     
     #Don't want to try to select a non-choice, so I check for windows just in case
-    if(tolower(substr(new_samp, nchar(new_samp)-3, nchar(new_samp))) == ".bam" & get_sys() != "Windows"){
+    if(tolower(substr(new_samp, nchar(new_samp)-3, nchar(new_samp))) == ".bam"){
       updateSelectInput(session, "fmt_add", selected = "bam")
     }
     

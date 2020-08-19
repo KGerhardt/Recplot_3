@@ -8,9 +8,6 @@ import argparse
 import platform
 import importlib
 import bamnostic
-
-def check_bamnostic_exists():
-    print("it do")
 	
 def parse_to_mags_identical(contig_file_name, out_file_name):
     
@@ -175,6 +172,7 @@ def sqldb_creation(contigs, mags, sample_reads, map_format, database):
     conn.commit()
     conn.close()
 
+#This is now written with bamnostic so that windows supports bam format, too.
 def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
     """ This script reads a read mapping file, extracts the contig to which each read maps,
         the percent id, the start and stop, and stores it in a table per sample.
@@ -298,7 +296,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
         #As a result, the entries are NOT the individual lines of the file and cannot be accessed as such
         #Instead, the iterator 'entry' returns a pointer to a location in memory based on the file
         #This iterator has a set of builtin functions that are called to access pos, ref name, MD:Z:
-        input_reads = pysam.AlignmentFile(mapping_file, "rb")
+        input_reads = bamnostic.AlignmentFile(mapping_file, "rb")
         for entry in input_reads:
             #This line could allow processing to work like in SAM fmt, but is slower.
             #line = entry.to_string()
@@ -309,7 +307,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
                 record_counter = 0
                 records = []
             #has_tag returns true if the entry has a %ID relevant field
-            if not entry.has_tag("MD"):
+            if not entry.get_tag("MD"):
                 continue
             else :
                 #No longer needed because of pysam accesses
@@ -881,7 +879,6 @@ def extract_genes_MAG_for_R(database, sample, mag_name, bin_height, id_lower):
     	
     return(matrix, id_breaks, gene_table)
     
-	
 #This function queries the database and returns the names of all of the samples present within it
 def assess_samples(database):
 	# Retrieve sample_id from sample_name provided
@@ -954,11 +951,8 @@ def check_presence_of_genes(database):
 	
     cursor.close()
     return(checker)
-
-
-
 	
-#A function for reading args
+#This was used in the development of the python script but isn't good for the R script.
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
             description='''This script builds recruitment plots (COMPLETE DESCRIPTION HERE)\n'''
