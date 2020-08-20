@@ -199,7 +199,6 @@ class read():
 				else:				
 					try:
 						self._subprocess = subprocess.Popen(["pigz"],stdin=DEVNULL,stdout=DEVNULL,stderr=DEVNULL)
-						print("tried subproc")
 						if self._subprocess.returncode is None: self._subprocess.kill()
 						use = 'pigz'
 					except OSError:
@@ -314,23 +313,15 @@ class read():
 		self._generator = generator()
 		
 		print(self._generator)
-		
-		print("post_generator")
-		
+				
 		## So lets parse the BAM header:
 		header_cache = b''
-		
-		print("cache")
-		
+				
 		while len(header_cache) < 4:
-			print("in_loop 1")
 			header_cache += next(self._generator)
-			print("in loop 2")
 		p_from = 0; p_to = 4
 		if header_cache[p_from:p_to] != b'BAM\x01':
 			raise PybamError('\n\nInput file ' + self.file_name + ' does not appear to be a BAM file.\n')
-
-		print("header")
 			
 		## Parse the BAM header:
 		p_from = p_to; p_to += 4
