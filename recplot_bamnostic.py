@@ -102,7 +102,7 @@ Github:	 http://github.com/JohnLonginotto/pybam
   my_bam = pybam.read('/my/data.bam',decompressor='internal')
 
 [ Parse Words (hah) ]'''
-wat += '\n'+''.join([('\n===============================================================================================\n\n  ' if code is 'file_alignments_read' or code is 'sam' else '  ')+(code+' ').ljust(25,'-')+description+'\n' for code,description in sorted(parse_codes.items())]) + '\n'
+wat += '\n'+''.join([('\n===============================================================================================\n\n  ' if code == 'file_alignments_read' or code == 'sam' else '  ')+(code+' ').ljust(25,'-')+description+'\n' for code,description in sorted(parse_codes.items())]) + '\n'
 
 class read():
 	'''
@@ -141,9 +141,9 @@ class read():
 		self.file_alignments_read	= 0
 		self.file_chromosome_lengths = {}
 
-		if fields is not False:
+		if fields != False:
 			print(fields)
-			if type(fields) is not list or len(fields) is 0:
+			if type(fields) == not list or len(fields) == 0:
 				raise PybamError('\n\nFields for the static parser must be provided as a non-empty list. You gave a ' + str(type(fields)) + '\n')
 			else:
 				for field in fields:
@@ -155,7 +155,7 @@ class read():
 
 		if decompressor:
 			if type(decompressor) is str:
-				 if decompressor is not 'internal' and '{}' not in decompressor: raise PybamError('\n\nWhen a custom decompressor is used and the input file is a string, the decompressor string must contain at least one occurence of "{}" to be substituted with a filepath by pybam.\n')
+				 if decompressor != 'internal' and '{}' not in decompressor: raise PybamError('\n\nWhen a custom decompressor is used and the input file is a string, the decompressor string must contain at least one occurence of "{}" to be substituted with a filepath by pybam.\n')
 			else: raise PybamError('\n\nUser-supplied decompressor must be a string that when run on the command line decompresses a named file (or stdin), to stdout:\ne.g. "lzma --decompress --stdout {}" if pybam is provided a path as input file, where {} is substituted for that path.\nor just "lzma --decompress --stdout" if pybam is provided a file object instead of a file path, as data from that file object will be piped via stdin to the decompression program.\n')
 
 		## First we make a generator that will return chunks of uncompressed data, regardless of how we choose to decompress:
@@ -218,7 +218,7 @@ class read():
 							use = 'gzip'
 						except OSError: 
 							use = 'internal'
-					if use is not 'internal' and decompressor is not 'internal':
+					if use != 'internal' and decompressor != 'internal':
 						if type(f) is str: self._subprocess = subprocess.Popen([								   use , '--decompress','--stdout',	   f		   ], stdout=subprocess.PIPE, stderr=DEVNULL)
 						else:			  self._subprocess = subprocess.Popen('{ printf "'+magic+'"; cat; } | ' + use + ' --decompress  --stdout', stdin=f, shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
 						time.sleep(1)
@@ -295,7 +295,7 @@ class read():
 						yield b''.join(internal_cache)
 					return
 
-			elif decompressor is not False and decompressor is not 'internal':
+			elif decompressor != False and decompressor != 'internal':
 				# It wouldn't be safe to just print to the shell four random bytes from the beginning of a file, so instead it's
 				# written to a temp file and cat'd. The idea here being that we trust the decompressor string as it was written by 
 				# someone with access to python, so it has system access anyway. The file/data, however, should not be trusted.
@@ -475,11 +475,11 @@ class read():
 			tmp['dtype_list'] = []
 			def pack_up(name,dtype,length,end,tmp):
 				if name in dependencies:
-					if tmp['last_start'] is None:
+					if tmp['last_start'] == None:
 						tmp['last_start'] = end - length
 					tmp['name_list'].append(name)
 					tmp['dtype_list'].append(dtype)
-				elif tmp['last_start'] is not None:
+				elif tmp['last_start'] != None:
 					tmp['code'] += '\n		' + ', '.join(tmp['name_list']) + ' = unpack("<' + ''.join(tmp['dtype_list']) + '",self.bam[' + str(tmp['last_start']) + ':' + str(end-length) + '])'
 					if len(tmp['dtype_list']) == 1:
 						tmp['code'] += '[0]'
