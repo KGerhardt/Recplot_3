@@ -1684,9 +1684,3 @@ def check_presence_of_genes(database):
 	cursor.close()
 	return(checker)
 	
-
-#def sqldb_creation(contigs, mags, sample_reads, map_format, database):
-
-reads = ["Exp1_Sample1_readmapping.bam"]
-
-sqldb_creation("ST5_TAW60_Bacillus_combined.fasta", "automatically_generated_association_file.txt", reads, "bam", "n.db")
