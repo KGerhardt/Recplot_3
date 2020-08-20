@@ -141,7 +141,7 @@ class read():
 		self.file_alignments_read	= 0
 		self.file_chromosome_lengths = {}
 
-		if fields != False:
+		if fields is not False:
 			print(fields)
 			if type(fields) is not list or len(fields) == 0:
 				raise PybamError('\n\nFields for the static parser must be provided as a non-empty list. You gave a ' + str(type(fields)) + '\n')
@@ -191,7 +191,7 @@ class read():
 
 			elif magic == b"\x1f\x8b\x08\x04":  # The user has passed us compressed gzip/bgzip data, which is typical for a BAM file
 				# use custom decompressor if provided:
-				if decompressor is not False and decompressor is not 'internal':
+				if decompressor is not False and decompressor != 'internal':
 					if type(f) is str: self._subprocess = subprocess.Popen(									decompressor.replace('{}',f),	shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
 					else:			  self._subprocess = subprocess.Popen('{ printf "'+magic+'"; cat; } | ' + decompressor, stdin=self._file, shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
 					self.file_decompressor = decompressor
@@ -295,7 +295,7 @@ class read():
 						yield b''.join(internal_cache)
 					return
 
-			elif decompressor != False and decompressor != 'internal':
+			elif decompressor is not False and decompressor != 'internal':
 				# It wouldn't be safe to just print to the shell four random bytes from the beginning of a file, so instead it's
 				# written to a temp file and cat'd. The idea here being that we trust the decompressor string as it was written by 
 				# someone with access to python, so it has system access anyway. The file/data, however, should not be trusted.
@@ -475,11 +475,11 @@ class read():
 			tmp['dtype_list'] = []
 			def pack_up(name,dtype,length,end,tmp):
 				if name in dependencies:
-					if tmp['last_start'] == None:
+					if tmp['last_start'] is None:
 						tmp['last_start'] = end - length
 					tmp['name_list'].append(name)
 					tmp['dtype_list'].append(dtype)
-				elif tmp['last_start'] != None:
+				elif tmp['last_start'] is not None:
 					tmp['code'] += '\n		' + ', '.join(tmp['name_list']) + ' = unpack("<' + ''.join(tmp['dtype_list']) + '",self.bam[' + str(tmp['last_start']) + ':' + str(end-length) + '])'
 					if len(tmp['dtype_list']) == 1:
 						tmp['code'] += '[0]'
@@ -741,6 +741,7 @@ class read():
 
 class PybamWarn(Exception): pass
 class PybamError(Exception): pass
+
 
 
 
