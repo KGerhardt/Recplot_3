@@ -143,7 +143,7 @@ class read():
 
 		if fields != False:
 			print(fields)
-			if type(fields) == not list or len(fields) == 0:
+			if type(fields) is not list or len(fields) == 0:
 				raise PybamError('\n\nFields for the static parser must be provided as a non-empty list. You gave a ' + str(type(fields)) + '\n')
 			else:
 				for field in fields:
