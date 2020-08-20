@@ -1030,7 +1030,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 			# Create index for faster access
 			cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
 	
-	if map_format == "bam" & get_sys() == "Windows":
+	if map_format == "bam" and get_sys() == "Windows":
 		record_counter = 0
 		records = []
 		
@@ -1095,7 +1095,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 		# Create index for faster access
 		cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
 	
-	if map_format == "bam" & get_sys() != "Windows":
+	if map_format == "bam" and get_sys() != "Windows":
 		record_counter = 0
 		records = []
 		
@@ -1759,3 +1759,4 @@ def check_presence_of_genes(database):
 	
 	cursor.close()
 	return(checker)
+	
