@@ -1028,9 +1028,6 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 		record_counter = 0
 		records = []
 		
-		#This reader has some odd properties - most of it exists as a C interface
-		#As a result, the entries are NOT the individual lines of the file and cannot be accessed as such
-		#Instead, the iterator 'entry' returns a pointer to a location in memory based on the file
 		#This iterator has a set of builtin functions that are called to access pos, ref name, MD:Z:
 		for entry in read(mapping_file):
 			#This line could allow processing to work like in SAM fmt, but is slower.
@@ -1042,7 +1039,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 				record_counter = 0
 				records = []
 			#has_tag returns true if the entry has a %ID relevant field
-			mdz_seg == ""
+			mdz_seg = ""
 			for a,b,c in entry.sam_tags_list:
 				if a == "MD":
 					mdz_seg = c
@@ -1052,7 +1049,8 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 			else :
 				#The individual read has a reference ID, and the file has a list of names via IDs.
 				#The entry.ref_ID gets the ID number, and the .get_ref returns the actual name from the number
-				contig_ref = input_reads.get_reference_name(entry.sam_qname)
+				contig_ref = entry.sam_rname
+				#print(contig_ref)
 				
 				# Exclude reads not associated with MAGs of interest
 				if contig_ref not in contig_mag_corresp:
@@ -1686,64 +1684,9 @@ def check_presence_of_genes(database):
 	cursor.close()
 	return(checker)
 	
-#This was used in the development of the python script but isn't good for the R script.
-def main():
-	parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
-			description='''This script builds recruitment plots (COMPLETE DESCRIPTION HERE)\n'''
-			'''Usage: ''' + sys.argv[0] + ''' COMPLETE\n'''
-			'''Global mandatory parameters: -g [Genome Files] OR -p [Protein Files] OR -s [SCG HMM Results] -o [AAI Table Output]\n'''
-			'''Optional Database Parameters: See ''' + sys.argv[0] + ' -h')
 
-	parser.add_argument("-c", "--contigs", dest="contigs", 
-	help = "This should be a FASTA file containing all and only the contigs that you would like to be part of your recruitment plot.")
-	parser.add_argument("-m", "--mags", dest="mags", default="", help = "A tab separated file containing the names of contigs in the first column and MAGs in the second column. Every contig should have its parent MAG listed in this file.")	
-	parser.add_argument("-r", "--reads", dest="reads", nargs='+', help = "This should be a file with reads aligned to your contigs in any of the following formats: tabular BLAST(outfmt 6), SAM, or Magic-BLAST")
-	parser.add_argument("-f", "--format", dest="map_format", default="blast", help="The format of the reads file (write 'blast' or 'sam'). Defaults to tabular BLAST.")
-	parser.add_argument("-g", "--genes", dest="genes", default = "", help = "Optional GFF3 file containing gene starts and stops to be use in the recruitment plot.")
-	parser.add_argument("-a", "--annot", dest="annotation", default = "", help = "Optional file with gene name in the first column and annotations in the second column.")
-	parser.add_argument("-i", "--ID-step", dest="id_step", default = 0.5, help = "Percent identity bin width. Default 0.5.")
-	parser.add_argument("-w", "--bin-width", dest="bin_width", default = 1000, help = "Approximate genome bin width in bp. Default 1000.")
-	parser.add_argument("-o", "--output", dest="out_file_name", default = "recruitment_plot", help = "Prefix of results to be output. Default: 'recruitment_plot'")
-	parser.add_argument("-e", "--export", dest="output_line", action='store_true', help = "Output sam lines to stdout?")
-	parser.add_argument("-d", "--database", dest="sql_database", action='store', help = "SQLite database to create or update")
-	parser.add_argument("-s", "--stats", dest="stats", action='store_true', help = "Write ANIr prep file?")
-	parser.add_argument("--interact", dest="lim_rec", action='store_true', help = "Create lim/rec files for each MAG; do NOT make recruitment matrices.")
-	
-	args = parser.parse_args()
-	
-   
-	contigs = args.contigs
-	reads = args.reads
-	mags = args.mags
-	map_format = args.map_format
-	genes = args.genes
-	annotation = args.annotation
-	step = float(args.id_step)
-	width = int(args.bin_width)
-	prefix = args.out_file_name
-	export_lines = args.output_line
-	do_stats = args.stats
-	interact = args.lim_rec
-	sql_database = args.sql_database
-	
-	# Create databases
-	#sqldb_creation(contigs, mags, reads, map_format, sql_database)
+#def sqldb_creation(contigs, mags, sample_reads, map_format, database):
 
-	# Prepare user requested information
-	# mag_id, matrix, id_breaks = prepare_matrices(sql_database, "IIa.A_ENTP2013_S02_SV82_300m_MAG_01", width, step, 70)
-	# matrix = fill_matrices(sql_database, mag_id, "03.All_SAR11--ETNP_2013_S02_SV89_300m.blast.bh", matrix, id_breaks)
+reads = ["Exp1_Sample1_readmapping.bam"]
 
-	# Add new sample to database
-	# add_sample(sql_database, ["03.First_Mapping.blast.bh", "TEST"], map_format)
-
-	# Add gene information
-	#gene_information = parse_prodigal_genes(genes)
-	#add_gene_information(sql_database, gene_information)
-	#add_gene_annotation(sql_database, annotation)
-
-	
-   
-
-#Just runs main.
-#if __name__ == "__main__":main()
-
+sqldb_creation("ST5_TAW60_Bacillus_combined.fasta", "automatically_generated_association_file.txt", reads, "bam", "n.db")
