@@ -129,7 +129,7 @@ setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build")
     tryCatch({
       
       use_miniconda(condaenv = "recruitment_plots", required = T )
-      get_python_local()
+      get_python()
       
     }, error = function(cond){
       
