@@ -6,6 +6,7 @@ import bisect
 import sqlite3
 import argparse
 import platform
+import importlib
 import os
 import zlib
 import time
@@ -13,6 +14,17 @@ import tempfile
 import subprocess
 from array import array
 from struct import unpack
+
+if platform.system() != "Windows":
+	try:
+		lib = importlib.import_module("pysam")
+	except:
+		print("", end = "")
+	else:
+		import pysam
+	
+def get_sys():
+	return(platform.system())
 
 CtoPy	   = { 'A':'<c', 'c':'<b', 'C':'<B', 's':'<h', 'S':'<H', 'i':'<i', 'I':'<I', 'f':'<f' }
 py4py	   = { 'A':  1 , 'c':  1 , 'C':  1 , 's':  2 , 'S':  2 , 'i':  4 , 'I':  4 , 'f':  4  }
@@ -72,38 +84,6 @@ parse_codes = {
 	'file_name':			   ' The file name (base name) of input file if input is a string or\n							  python file object. If input is via stdin this will be "<stdin>"'
 }
 
-wat = '''
-Main class: pybam.read
-Github:	 http://github.com/JohnLonginotto/pybam
-
-[ Dynamic Parser Example ]
-  for alignment in pybam.read('/my/data.bam'):
-	  print alignment.sam_seq
-
-[ Static Parser Example ]
-  for seq,mapq in pybam.read('/my/data.bam',['sam_seq','sam_mapq']):
-	   print seq
-	   print mapq
-
-[ Mixed Parser Example ]
-  my_bam = pybam.read('/my/data.bam',['sam_seq','sam_mapq'])
-  print my_bam._static_parser_code
-  for seq,mapq in my_bam:
-	   if seq.startswith('ACGT') and mapq > 10:
-	   print my_bam.sam
-
-[ Custom Decompressor (from file path) Example ]
-  my_bam = pybam.read('/my/data.bam.lzma',decompressor='lzma --decompress --stdout /my/data.bam.lzma')
-
-[ Custom Decompressor (from file object) Example ]
-  my_bam = pybam.read(sys.stdin,decompressor='lzma --decompress --stdout') # data given to lzma via stdin
-	
-[ Force Internal bgzip Decompressor ]
-  my_bam = pybam.read('/my/data.bam',decompressor='internal')
-
-[ Parse Words (hah) ]'''
-wat += '\n'+''.join([('\n===============================================================================================\n\n  ' if code == 'file_alignments_read' or code == 'sam' else '  ')+(code+' ').ljust(25,'-')+description+'\n' for code,description in sorted(parse_codes.items())]) + '\n'
-
 class read():
 	'''
 	[ Dynamic Parser Example ]
@@ -135,7 +115,8 @@ class read():
 	or visit http://github.com/JohnLonginotto/pybam for the latest info.
 	'''
 
-	def __init__(self,f,fields=False,decompressor=False):
+	def __init__(self,f,fields=False, decompressor="internal"):
+		
 		self.file_bytes_read		 = 0
 		self.file_chromosomes		= []
 		self.file_alignments_read	= 0
@@ -161,21 +142,28 @@ class read():
 		## First we make a generator that will return chunks of uncompressed data, regardless of how we choose to decompress:
 		def generator():
 			DEVNULL = open(os.devnull, 'wb')
-
 			# First we need to figure out what sort of file we have - whether it's gzip compressed, uncompressed, or something else entirely!
 			if type(f) is str:
-				try: self._file = open(f,'rb')
-				except: raise PybamError('\n\nCould not open "' + str(self._file.name) + '" for reading!\n')
-				try: magic = os.read(self._file.fileno(),4)
-				except: raise PybamError('\n\nCould not read from "' + str(self._file.name) + '"!\n')
+				try: 
+					self._file = open(f,'rb')
+				except: 
+					raise PybamError('\n\nCould not open "' + str(self._file.name) + '" for reading!\n')
+				try: 
+					magic = self._file.read(4)
+				except: 
+					raise PybamError('\n\nCould not read from "' + str(self._file.name) + '"!\n')
 			elif type(f) is file:
 				self._file = f
-				try: magic = os.read(self._file.fileno(),4)
-				except: raise PybamError('\n\nCould not read from "' + str(self._file.name) + '"!\n')
-			else: raise PybamError('\n\nInput file was not a string or a file object. It was: "' + str(f) + '"\n')
+				try: 
+					magic = self._file.read(4)
+				except: 
+					raise PybamError('\n\nCould not read from "' + str(self._file.name) + '"!\n')
+			else: 
+				raise PybamError('\n\nInput file was not a string or a file object. It was: "' + str(f) + '"\n')
 
 			self.file_name = os.path.basename(os.path.realpath(self._file.name))
 			self.file_directory = os.path.dirname(os.path.realpath(self._file.name))
+			
 			if magic == b'BAM\1':
 				# The user has passed us already unzipped BAM data! Job done :)
 				data = b'BAM\1' + self._file.read(35536)
@@ -190,10 +178,12 @@ class read():
 				return
 
 			elif magic == b"\x1f\x8b\x08\x04":  # The user has passed us compressed gzip/bgzip data, which is typical for a BAM file
-				# use custom decompressor if provided:
+
 				if decompressor is not False and decompressor != 'internal':
-					if type(f) is str: self._subprocess = subprocess.Popen(									decompressor.replace('{}',f),	shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
-					else:			  self._subprocess = subprocess.Popen('{ printf "'+magic+'"; cat; } | ' + decompressor, stdin=self._file, shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
+					if type(f) is str: 
+						self._subprocess = subprocess.Popen(									decompressor.replace('{}',f),	shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
+					else:
+						self._subprocess = subprocess.Popen('{ printf "'+magic+'"; cat; } | ' + decompressor, stdin=self._file, shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
 					self.file_decompressor = decompressor
 					data = self._subprocess.stdout.read(35536)
 					self.file_bytes_read += len(data)
@@ -206,9 +196,10 @@ class read():
 					return
 
 				# else look for pigz or gzip:
-				else:
+				else:				
 					try:
 						self._subprocess = subprocess.Popen(["pigz"],stdin=DEVNULL,stdout=DEVNULL,stderr=DEVNULL)
+						print("tried subproc")
 						if self._subprocess.returncode is None: self._subprocess.kill()
 						use = 'pigz'
 					except OSError:
@@ -300,9 +291,12 @@ class read():
 				# written to a temp file and cat'd. The idea here being that we trust the decompressor string as it was written by 
 				# someone with access to python, so it has system access anyway. The file/data, however, should not be trusted.
 				magic_file = os.path.join(tempfile.mkdtemp(),'magic')
-				with open(magic_file,'wb') as mf: mf.write(magic)
-				if type(f) is str: self._subprocess = subprocess.Popen(									  decompressor.replace('{}',f),	shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-				else:			  self._subprocess = subprocess.Popen('{ cat "'+magic_file+'"; cat; } | ' + decompressor, stdin=self._file, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+				with open(magic_file,'wb') as mf: 
+					mf.write(magic)
+				if type(f) is str: 
+					self._subprocess = subprocess.Popen(decompressor.replace('{}',f),	shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+				else:
+					self._subprocess = subprocess.Popen('{ cat "'+magic_file+'"; cat; } | ' + decompressor, stdin=self._file, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 				self.file_decompressor = decompressor
 				data = self._subprocess.stdout.read(35536)
 				self.file_bytes_read += len(data)
@@ -318,15 +312,26 @@ class read():
 
 		## At this point, we know that whatever decompression method was used, a call to self._generator will return some uncompressed data.
 		self._generator = generator()
-
+		
+		print(self._generator)
+		
+		print("post_generator")
+		
 		## So lets parse the BAM header:
 		header_cache = b''
+		
+		print("cache")
+		
 		while len(header_cache) < 4:
+			print("in_loop 1")
 			header_cache += next(self._generator)
+			print("in loop 2")
 		p_from = 0; p_to = 4
 		if header_cache[p_from:p_to] != b'BAM\x01':
 			raise PybamError('\n\nInput file ' + self.file_name + ' does not appear to be a BAM file.\n')
 
+		print("header")
+			
 		## Parse the BAM header:
 		p_from = p_to; p_to += 4
 		length_of_header = unpack('<i',header_cache[p_from:p_to])[0]
@@ -352,6 +357,7 @@ class read():
 		self.file_binary_header = memoryview(header_cache[:p_to])
 		header_cache = header_cache[p_to:]
 
+		
 		# A quick check to make sure the header of this BAM file makes sense:
 		chromosomes_from_header = []
 		for line in str(self.file_header).split('\\n'):
@@ -359,9 +365,10 @@ class read():
 				chromosomes_from_header.append(line.split('\\t')[1][3:])
 		if chromosomes_from_header != self.file_chromosomes:
 			raise PybamWarn('For some reason the BAM format stores the chromosome names in two locations,\n	   the ASCII text header we all know and love, viewable with samtools view -H, and another special binary header\n	   which is used to translate the chromosome refID (a number) into a chromosome RNAME when you do bam -> sam.\n\nThese two headers should always be the same, but apparently they are not:\nThe ASCII header looks like: ' + self.file_header + '\nWhile the binary header has the following chromosomes: ' + self.file_chromosomes + '\n')
-		
+				
 		#HL - decoding header
 		self.file_header = self.file_header.decode()
+	
 		
 		## Variable parsing:
 		def new_entry(header_cache):
@@ -379,6 +386,8 @@ class read():
 				p = p + 4 + self.sam_block_size
 				yield self
 		self._new_entry = new_entry(header_cache)
+		
+		
 
 		def compile_parser(self,fields):
 			temp_code = ''
@@ -761,9 +770,6 @@ def parse_to_mags_identical(contig_file_name, out_file_name):
 	
 	mags.close()
 	return("")
-
-def get_sys():
-	return(platform.system())
 	
 def tables_in_sqlite_db(conn):
 
@@ -1024,7 +1030,7 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 			# Create index for faster access
 			cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
 	
-	if map_format == "bam":
+	if map_format == "bam" & get_sys() == "Windows":
 		record_counter = 0
 		records = []
 		
@@ -1088,6 +1094,76 @@ def save_reads_mapped(mapping_file, sample_name, map_format, cursor, conn):
 			cursor.execute("commit")
 		# Create index for faster access
 		cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
+	
+	if map_format == "bam" & get_sys() != "Windows":
+		record_counter = 0
+		records = []
+		
+		#This reader has some odd properties - most of it exists as a C interface
+		#As a result, the entries are NOT the individual lines of the file and cannot be accessed as such
+		#Instead, the iterator 'entry' returns a pointer to a location in memory based on the file
+		#This iterator has a set of builtin functions that are called to access pos, ref name, MD:Z:
+		input_reads = pysam.AlignmentFile(mapping_file, "rb")
+		for entry in input_reads:
+			#This line could allow processing to work like in SAM fmt, but is slower.
+			#line = entry.to_string()
+			if record_counter == 500000:
+				cursor.execute("begin")
+				cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+				cursor.execute("commit")
+				record_counter = 0
+				records = []
+			#has_tag returns true if the entry has a %ID relevant field
+			if not entry.has_tag("MD"):
+				continue
+			else :
+				#No longer needed because of pysam accesses
+				#segment = line.split()
+				
+				#The individual read has a reference ID, and the file has a list of names via IDs.
+				#The entry.ref_ID gets the ID number, and the .get_ref returns the actual name from the number
+				contig_ref = input_reads.get_reference_name(entry.reference_id)
+				
+								
+				# Exclude reads not associated with MAGs of interest
+				if contig_ref not in contig_mag_corresp:
+					continue
+				else:
+					if contig_ref not in contigs_in_sample:
+						contigs_in_sample.append(contig_ref)
+					
+					#Returns the MD:Z: segment
+					mdz_seg = entry.get_tag("MD")
+					match_count = re.findall('[0-9]+', mdz_seg)
+					sum=0
+					for num in match_count:
+						sum+=int(num)
+					total_count = len(''.join([i for i in mdz_seg if not i.isdigit()])) + sum
+					pct_id = (sum/(total_count))*100
+					
+					
+					#BAM files, unlike SAM files, are zero indexed. This +1 adjustment ensures SAM/BAM/R consistency
+					start = entry.reference_start+1
+					
+					
+					end = start+total_count-1
+					# Get mag_id and contig_id
+					mag_id = contig_mag_corresp[contig_ref][1]
+					contig_id = contig_mag_corresp[contig_ref][2]
+					
+					
+					records.append((mag_id, contig_id, pct_id, start, end))
+					
+					
+					record_counter += 1
+		# Commit remaining records
+		if record_counter > 0:
+			cursor.execute("begin")
+			cursor.executemany('INSERT INTO ' + sample_name + ' VALUES(?, ?, ?, ?, ?)', records)
+			cursor.execute("commit")
+		# Create index for faster access
+		cursor.execute('CREATE INDEX ' + sample_name + '_index on ' + sample_name + ' (mag_id)')
+	
 	conn.commit()
 	return contigs_in_sample
 
@@ -1684,3 +1760,9 @@ def check_presence_of_genes(database):
 	cursor.close()
 	return(checker)
 	
+
+#def sqldb_creation(contigs, mags, sample_reads, map_format, database):
+
+reads = ["Exp1_Sample1_readmapping.bam"]
+
+sqldb_creation("ST5_TAW60_Bacillus_combined.fasta", "automatically_generated_association_file.txt", reads, "bam", "n.db")

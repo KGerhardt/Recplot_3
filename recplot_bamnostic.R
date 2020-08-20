@@ -80,6 +80,8 @@
   
 }
 
+setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build")
+
 #Helper functions
 {
   #This will download whatever the current python script is. You have to run it before landing page.
@@ -106,15 +108,17 @@
     use_miniconda(condaenv = "recruitment_plots", required = T)
     get_python()
     
-      if(!py_module_available("bamnostic")){
-        cat("Attempting to install bamnostic to recruitment_plots...\n")
+    if(get_sys() != "Windows"){
+      if(py_module_available("pysam")){
+        cat("Attempting to install pysam to recruitment_plots...\n")
         try({
-          conda_install(packages = "bamnostic", envname = "recruitment_plots", channel = "conda-forge")
+          py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
         }) 
       }else{
-        cat("bamnostic already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?\n")
+        cat("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?\n")
       }
       
+    }
     
   }
   
@@ -125,7 +129,7 @@
     tryCatch({
       
       use_miniconda(condaenv = "recruitment_plots", required = T )
-      get_python()
+      get_python_local()
       
     }, error = function(cond){
       
@@ -574,10 +578,18 @@ recplot_UI <- function(){
   {
     system <- get_sys()
     
-    #todo - remove this because it's no longer needed
-    #format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
+    format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam")
+    
+    if(system == "Windows"){
+      format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
+    }else{
+      if(py_module_available("pysam") == T){
+        format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
+      }else{
+        cat("Your OS supports pysam, but you do not have it installed. Recruitment Plots tries to install this, but it seems to have failed. Try 'pip install pysam' on the command line.\n")
+      }
+    }
 
-    format_choices <- c("Tabular BLAST" = "blast", "SAM" = "sam", "BAM" = "bam")
 
     
     gene_choices <- c("Prodigal GFF" = "prodigal")
@@ -1013,8 +1025,8 @@ recplot_server <- function(input, output, session) {
       updateSelectInput(session, "fmt", selected = "sam")
     }
     
-    #Don't want to try to select a non-choice, so I check for windows just in case
-    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam"){
+    #checks for pysam in case
+    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam" & (get_sys() == "Windows" | py_module_available("pysam") == T) ){
       updateSelectInput(session, "fmt", selected = "bam")
     }
     
@@ -1188,7 +1200,9 @@ recplot_server <- function(input, output, session) {
         on.exit(progress$close())
         progress$set(message = "Making Database", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
         
-        sqldb_creation(contigs = input$contig_file, mags = input$mag_file, sample_reads = list(path_simplifier(input$cur_dir, input$read_file)), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
+        #todooooo
+        #sqldb_creation(contigs = input$contig_file, mags = input$mag_file, sample_reads = list(path_simplifier(input$cur_dir, input$read_file)), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
+        sqldb_creation(contigs = input$contig_file, mags = input$mag_file, sample_reads = list(input$read_file), map_format = input$fmt, database = paste0(gsub(" ", "_", input$dbname), ".db"))
         
         #Gets rid of the silly non-progress bar
         progress$set(message = "Making Database", value = 1)
