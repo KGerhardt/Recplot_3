@@ -1143,6 +1143,11 @@ recplot_server <- function(input, output, session) {
         
         #User feedback bar
         input_bigness <- hms(max(ceiling(round(file.size(input$read_file)/(1024^2)/15, 1)), 5))
+        
+        if(input$fmt == "bam"){
+          input_bigness <- hms(max(ceiling(round(file.size(input$add_samp)/(1024^2)/4, 1)), 5))
+        }
+        
         progress <- shiny::Progress$new()
         on.exit(progress$close())
         progress$set(message = "Making Database", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
@@ -1304,6 +1309,11 @@ recplot_server <- function(input, output, session) {
     
     #User feedback bar
     input_bigness <- hms(max(ceiling(round(file.size(input$add_samp)/(1024^2)/15, 1)), 5))
+    
+    if(input$fmt_add == "bam"){
+      input_bigness <- hms(max(ceiling(round(file.size(input$add_samp)/(1024^2)/4, 1)), 5))
+    }
+    
     progress <- shiny::Progress$new()
     on.exit(progress$close())
     progress$set(message = "Adding Sample", value = 0.5, detail = paste("Expected time to completion:",input_bigness))
