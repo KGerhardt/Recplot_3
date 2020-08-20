@@ -1145,7 +1145,7 @@ recplot_server <- function(input, output, session) {
         input_bigness <- hms(max(ceiling(round(file.size(input$read_file)/(1024^2)/15, 1)), 5))
         
         if(input$fmt == "bam"){
-          input_bigness <- hms(max(ceiling(round(file.size(input$add_samp)/(1024^2)/4, 1)), 5))
+          input_bigness <- hms(max(ceiling(round(file.size(input$read_file)/(1024^2)/4, 1)), 5))
         }
         
         progress <- shiny::Progress$new()
