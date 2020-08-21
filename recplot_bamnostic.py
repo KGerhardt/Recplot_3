@@ -14,6 +14,7 @@ import tempfile
 import subprocess
 from array import array
 from struct import unpack
+from urllib.request import pathname2url
 
 if platform.system() != "Windows":
 	try:
@@ -738,12 +739,8 @@ class read():
 		if self._subprocess.returncode is None: self._subprocess.kill()
 		self._file.close()
 
-
 class PybamWarn(Exception): pass
 class PybamError(Exception): pass
-
-
-
 
 def parse_to_mags_identical(contig_file_name, out_file_name):
 	
@@ -1751,3 +1748,138 @@ def check_presence_of_genes(database):
 	cursor.close()
 	return(checker)
 	
+#A function to check if a user-supplied file matches the appropriate fmt we're expecting
+def detect_file_format(file, ask):
+	detected_format = "none"
+	correct = False
+	
+	if ask == "fasta":
+		correct = detect_fasta(file)
+		if correct:
+			detected_format = "fasta"
+		
+	if ask == "bam":
+		correct = detect_bam(file)
+		if correct:
+			detected_format = "bam"	
+	
+	if ask == "sam":
+		correct = detect_sam(file)
+		if correct:
+			detected_format = "sam"	
+	
+	if ask == "blast":
+		correct = detect_blast(file)
+		if correct:
+			detected_format = "blast"	
+	
+	#If the user supplies a mismatch file, then this will run. Otw, we should only run the requested check to avoid excess effort.
+	if not correct:
+		isfasta = detect_fasta(file)
+		isbam = detect_bam(file)
+		issam = detect_sam(file)
+		isblast = detect_blast(file)
+		
+		if isfasta:
+			detected_format = "fasta"
+		if isbam:
+			detected_format = "bam"
+		if issam:
+			detected_format = "sam"
+		if isblast:
+			detected_format = "blast"
+	
+	return(detected_format)
+	
+def detect_fasta(file):
+	fh = open(file, "r")
+	
+	fmt_fine = True
+	for i in range(0, 30):
+		try:
+			line = fh.readline()
+		except:
+			fmt_fine = False
+			break
+		if not line.startswith(">"):
+			if not set(line) <= set("ATCGatcgNn\n"):
+				fmt_fine = False
+	fh.close()
+	
+	return(fmt_fine)
+	
+def detect_bam(file):
+	fh = open(file, "rb")
+	
+	fmt_fine = True
+	
+	head = fh.read(4)
+	
+	if head != b'BAM\1' and head != b"\x1f\x8b\x08\x04":
+		fmt_fine = False
+	
+	fh.close()
+	
+	return(fmt_fine)
+	
+def detect_blast(file):
+	fh = open(file, "r")
+	
+	fmt_fine = True
+
+	try:
+		line = fh.readline().strip()
+	except:
+		fmt_fine = False
+	else:
+		while line.startswith("#"):
+			line = fh.readline().strip()
+		segment = line.split()
+		if len(segment) < 9:
+			fmt_fine = False
+		else:
+			if segment[8].isnumeric() and segment[9].isnumeric():
+				fmt_fine = True
+			else:
+				fmt_fine = False
+	
+	fh.close()
+	
+	return(fmt_fine)
+	
+def detect_sam(file):
+	fh = open(file, "r")
+	
+	fmt_fine = True
+	
+	try:
+		line = fh.readline()
+	except :
+		fmt_fine = False
+	else:
+		if line.startswith("@"):
+			pass
+		else:
+			fmt_fine = False
+	
+	fh.close()
+	
+	return(fmt_fine)
+	
+def detect_is_db(dbname):
+	isdb = True
+	try:
+		dburi = 'file:{}?mode=rw'.format(pathname2url(dbname))
+		conn = sqlite3.connect(dburi, uri=True)
+		
+		try:
+			ff = tables_in_sqlite_db(conn)
+		except:
+			isdb = False
+		else:
+			pass
+		
+		conn.close()
+	except :
+		isdb = False
+	return isdb

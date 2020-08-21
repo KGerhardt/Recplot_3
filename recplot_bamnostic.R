@@ -80,8 +80,6 @@
   
 }
 
-setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build")
-
 #Helper functions
 {
   #This will download whatever the current python script is. You have to run it before landing page.
@@ -454,29 +452,63 @@ setwd("C:/Users/Kenji/Desktop/Recplot4/recplot_final_build")
   create_static_data <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, trunc_behavior = "ends", trunc_degree = as.integer(75), ...){
     
     
-    #Allows for count normalization by bin width across all bins
-    norm_factor <- min(base$End-base$Start) + 1
+    if("gene_name" %in% colnames(base)){
+      
+      #Allows for count normalization by bin width across all bins
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
+      
+      base[, seq_pos := NULL,]
+      
+      base[, id_lower := Pct_ID_bin - id_break, ]
+      
+      base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
+      
+      base <- base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label, gene_name, gene_start, gene_end, gene_strand, gene_annotation),]
+      
+      colnames(base)[1:8] = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
+      
+      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
+      
+      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "pct_id_group"))
+      
+      #upper left panel
+      
+      depth_data <- base[, list(sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), unique(gene_name), unique(gene_start), unique(gene_end), unique(gene_strand), unique(gene_annotation)), by = key(base)]
+      colnames(depth_data)[5:9] = c("average_sequencing_depth", "gene_name", "gene_start", "gene_end", "gene_strand", "gene_annotation")
+      
+      setkeyv(depth_data, c("contig_name", "pct_id_group", "start_pos_in_contig"))
+      
+    }else{
+      #Allows for count normalization by bin width across all bins
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
+      
+      base[, seq_pos := NULL,]
+      
+      base[, id_lower := Pct_ID_bin - id_break, ]
+      
+      base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
+      
+      base <- base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label),]
+      
+      colnames(base) = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
+      
+      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
+      
+      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "pct_id_group"))
+      
+      #upper left panel
+      
+      depth_data <- base[, sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), by = key(base)]
+      colnames(depth_data)[ncol(depth_data)] = "average_sequencing_depth"
+      
+      setkeyv(depth_data, c("contig_name", "pct_id_group", "start_pos_in_contig"))
+      
+    }
     
-    base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
-    
-    base[, seq_pos := NULL,]
-    
-    base[, id_lower := Pct_ID_bin - id_break, ]
-    
-    base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
-    
-    base <- base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label),]
-    
-    colnames(base) = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
-    
-    setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
-    
-    setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "pct_id_group"))
-    
-    #upper left panel
-    
-    depth_data <- base[, sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), by = key(base)]
-    colnames(depth_data)[ncol(depth_data)] = "average_sequencing_depth"
     
     
     return(list(base, depth_data))
@@ -934,6 +966,10 @@ recplot_server <- function(input, output, session) {
       
       if(!check_presence_of_genes(input$exist_dbname)){
         initial_message2 <<- paste0(initial_message2, "\nGenes not detected. You have to add genes to the database\nbefore plotting gene regions and annotations.")
+        
+        output$message2 <- renderText(initial_message2)
+      }else{
+        initial_message2 <<- paste0(initial_message2, "\nGenes detected! You can plot the genes in this data.")
         
         output$message2 <- renderText(initial_message2)
       }
@@ -2418,6 +2454,7 @@ recplot_server <- function(input, output, session) {
   })
   
   session$onSessionEnded(function() {
+    
     cat("\nThank you for using Recruitment Plots!\n")
     cat("Any databases you created or plots you made are stored in:")
     cat(getwd())
@@ -2441,8 +2478,4 @@ recplot_landing_page <- function(){
 }
 
 recplot_landing_page()
-
-
-
-
 
