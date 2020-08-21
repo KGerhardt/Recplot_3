@@ -1757,6 +1757,7 @@ def detect_file_format(file):
 	isbam = detect_bam(file)
 	issam = detect_sam(file)
 	isblast = detect_blast(file)
+	isdb = detect_is_db(file)
 		
 	if isfasta:
 		detected_format = "fasta"
@@ -1766,6 +1767,8 @@ def detect_file_format(file):
 		detected_format = "sam"
 	if isblast:
 		detected_format = "blast"
+	if(isdb):
+		detected_format = "database"
 	
 	return(detected_format)
 	
