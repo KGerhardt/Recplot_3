@@ -1749,45 +1749,23 @@ def check_presence_of_genes(database):
 	return(checker)
 	
 #A function to check if a user-supplied file matches the appropriate fmt we're expecting
-def detect_file_format(file, ask):
+def detect_file_format(file):
 	detected_format = "none"
-	correct = False
-	
-	if ask == "fasta":
-		correct = detect_fasta(file)
-		if correct:
-			detected_format = "fasta"
-		
-	if ask == "bam":
-		correct = detect_bam(file)
-		if correct:
-			detected_format = "bam"	
-	
-	if ask == "sam":
-		correct = detect_sam(file)
-		if correct:
-			detected_format = "sam"	
-	
-	if ask == "blast":
-		correct = detect_blast(file)
-		if correct:
-			detected_format = "blast"	
 	
 	#If the user supplies a mismatch file, then this will run. Otw, we should only run the requested check to avoid excess effort.
-	if not correct:
-		isfasta = detect_fasta(file)
-		isbam = detect_bam(file)
-		issam = detect_sam(file)
-		isblast = detect_blast(file)
+	isfasta = detect_fasta(file)
+	isbam = detect_bam(file)
+	issam = detect_sam(file)
+	isblast = detect_blast(file)
 		
-		if isfasta:
-			detected_format = "fasta"
-		if isbam:
-			detected_format = "bam"
-		if issam:
-			detected_format = "sam"
-		if isblast:
-			detected_format = "blast"
+	if isfasta:
+		detected_format = "fasta"
+	if isbam:
+		detected_format = "bam"
+	if issam:
+		detected_format = "sam"
+	if isblast:
+		detected_format = "blast"
 	
 	return(detected_format)
 	
