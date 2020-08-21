@@ -1041,6 +1041,9 @@ recplot_server <- function(input, output, session) {
   })
   
   observeEvent(input$reads, {
+    
+    detected_fmt = "none"
+    
     tryCatch({
       reads <- choose_file(caption = "Select Mapped Reads")
     },
@@ -1051,18 +1054,31 @@ recplot_server <- function(input, output, session) {
     
     if(length(reads) == 0){
       reads <- "No reads selected. Try again?"
+    }else{
+      
+      if(file.exists(reads)){
+        detected_fmt = detect_file_format(reads)
+        if(detected_fmt == "fasta"){
+          shinyalert("This looks like a FASTA file!", "Are you sure these are mapped reads and NOT raw reads or genomes?", type = "error")
+        }
+        if(detected_fmt == "database"){
+          shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
+        }
+        if(detected_fmt == "none"){
+          shinyalert("I don't recognize this file!", "This doesn't look like the right kind of file! Are you sure this is a mapped read file?", type = "error")
+        }
+      }
     }
     
     updateSelectInput(session, "fmt", selected = "blast")
-    
     updateTextInput(session, "read_file", value = reads)
     
-    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".sam"){
+    if(detected_fmt == "sam"){
       updateSelectInput(session, "fmt", selected = "sam")
     }
     
     #checks for pysam in case
-    if(tolower(substr(reads, nchar(reads)-3, nchar(reads))) == ".bam" & (get_sys() == "Windows" | py_module_available("pysam") == T) ){
+    if(detected_fmt == "bam"){
       updateSelectInput(session, "fmt", selected = "bam")
     }
     
@@ -1080,6 +1096,12 @@ recplot_server <- function(input, output, session) {
     
     if(length(contigs) == 0){
       contigs <- "No genomes selected. Try again?"
+    }else{
+      if(file.exists(contigs)){
+        if(detect_file_format(contigs) != "fasta"){
+          shinyalert("Are these genomes?", "These look like something other than FASTA format genomes to me. Did you select the correct file?", type = "error")
+        } 
+      }
     }
     
     updateTextInput(session, "contig_file", value = contigs)
@@ -1275,6 +1297,12 @@ recplot_server <- function(input, output, session) {
     
     if(length(db) == 0){
       db <- "No existing database selected. Try again?"
+    }else{
+      if(file.exists(db)){
+        if( detect_file_format(db) != "database"){
+          shinyalert("This doesn't look like a database to me!", "Did you make this file with the Recruitment Plot database creation tab?", type = "error")
+        }
+      }
     }
     
     updateTextInput(session, "exist_dbname", value = db)
@@ -1282,6 +1310,8 @@ recplot_server <- function(input, output, session) {
   })
   
   observeEvent(input$add_sample,{
+    
+    detected_fmt = ""
     
     #Add a don't-do-this if there's not a selected DB
     if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?"){
@@ -1302,6 +1332,19 @@ recplot_server <- function(input, output, session) {
     
     if(length(new_samp) == 0){
       new_samp <- "No new sample. Try again?"
+    }else{
+      if(file.exists(new_samp)){
+      detected_fmt = detect_file_format(new_samp)
+      if(detected_fmt == "fasta"){
+        shinyalert("This looks like a FASTA file!", "Are you sure these are mapped reads and NOT raw reads or genomes?", type = "error")
+      }
+      if(detected_fmt == "database"){
+        shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
+      }
+      if(detected_fmt == "none"){
+        shinyalert("I don't recognize this file!", "This doesn't look like the right kind of file! Are you sure this is a mapped read file?", type = "error")
+      }
+      }
     }
     
     
@@ -1309,12 +1352,12 @@ recplot_server <- function(input, output, session) {
     
     updateSelectInput(session, "fmt_add", selected = "blast")
     
-    if(tolower(substr(new_samp, nchar(new_samp)-3, nchar(new_samp))) == ".sam"){
+    if(detected_fmt == "sam"){
       updateSelectInput(session, "fmt_add", selected = "sam")
     }
     
-    #Don't want to try to select a non-choice, so I check for windows just in case
-    if(tolower(substr(new_samp, nchar(new_samp)-3, nchar(new_samp))) == ".bam"){
+    #checks for pysam in case
+    if(detected_fmt == "bam"){
       updateSelectInput(session, "fmt_add", selected = "bam")
     }
     
@@ -1449,6 +1492,11 @@ recplot_server <- function(input, output, session) {
         return(NA)
       })
       
+      detected_fmt = detect_file_format(input$exist_dbname)
+      
+      if(detected_fmt != "database"){
+        return(NA)
+      }
       
       labels <- unlist(samples_in_db)
       
