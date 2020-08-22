@@ -85,7 +85,7 @@
   #This will download whatever the current python script is. You have to run it before landing page.
   get_python <- function(){
     
-    source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/bamnostic/recplot_bamnostic.py", envir = globalenv())
+    source_python("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/Recplot.py", envir = globalenv())
     
   }
   
