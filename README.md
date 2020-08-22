@@ -10,9 +10,9 @@ The recruitment plot is a tool aimed at assessing the quality of read recruitmen
 * Identifying the presence of closely-related microbial strains in the same community
 <br/>
 The plots are simple to use: install R through your preferred method, start an interactive R session, and execute the following R command:
-<br/>
+<br/><br/>
 source("https://raw.githubusercontent.com/KGerhardt/Recplot_4/master/Recplot.R")
-<br/>
+<br/><br/>
 Doing so will bring up a graphical interface in your browser through which genomes and reads mapped to them can be turned into recruitment plots.
 
 For more intstructions and instructions on how to read the plot, read the user manual at: https://drive.google.com/file/d/1mNJeOV7l73-oYkau5PEeFJ8OtM_izMZu/view?usp=sharing
