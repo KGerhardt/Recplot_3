@@ -1939,4 +1939,3 @@ def detect_is_prodigal(file):
 	fh.close()
 	
 	return(fmt_fine)
-	
