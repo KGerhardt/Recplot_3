@@ -1940,4 +1940,3 @@ def detect_is_prodigal(file):
 	
 	return(fmt_fine)
 	
-print(detect_file_format(sys.argv[1]))
