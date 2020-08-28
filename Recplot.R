@@ -77,6 +77,13 @@
     library(shinyalert)
   }
   
+  check <- suppressWarnings(suppressMessages(require(htmlwidgets)))
+  
+  if(!check){
+    install.packages("htmlwidgets")
+    library(htmlwidgets)
+  }
+  
   
 }
 
@@ -804,7 +811,7 @@ recplot_UI <- function(){
                              bsTooltip("get_a_mag", "Click this to load the current Genome into the viewer and plot it. Please wait for the plot to appear after clicking this. This loads the data for all tabs.", placement = "right"),
                              bsTooltip("in_group_min_stat", "Controls the lower edge of the shaded region in the recruitment plot's lower panels. Reads mapping at or above this percent identity are regarded as the \"in-group\" for the Recruitment Plot, and are represented by the dark blue lines in the upper panels.", placement = "right"),
                              bsTooltip("linear_stat", "Causes the lower right panel to display base pair counts per percent identity bin in linear scale or log scale.", placement = "right"),
-                             bsTooltip("print_stat", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to print a PDF of the current", placement = "right"),
+                             bsTooltip("print_stat", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to print a PDF of the current plot", placement = "right"),
                              
                              #todo
                              bsTooltip("output_data_stat", "Outputs the data for the current plots to 2 tab-separated files corresponding to the bottom left and top left panels (recruitment and sequencing depth information).", placement = "right"),
@@ -831,7 +838,7 @@ recplot_UI <- function(){
                                      
                            )
                   ),
-                  tabPanel("Hover Plot", 
+                  tabPanel("Interactive Plot", 
                            sidebarPanel(
                              width = 3,
                              
@@ -868,6 +875,12 @@ recplot_UI <- function(){
                              h3("Fine Tuning (Interactive)"),
                              
                              numericInput("in_group_min_interact", "(6) In-Group Pct. ID", min = 50, max = 99.5, value = 95),
+                             
+                             textInput("pdf_name_interact", "Name and save current plot."),
+                             actionButton("print_interact", "Save interactive HTML", icon = icon("save")),
+                             
+                             bsTooltip("pdf_name_interact", "Name the current interactive plot as an HTML page before saving it.", placement = "right"),
+                             bsTooltip("print_interact", "After loading a plot (meaning you should be able to see it), add a name in the associated text box and then click this to save an HTML of the current", placement = "right"),
                              
                              bsTooltip("samples_interact", "This menu contains a list of samples within the database. Select one, and the genome field will be populated with the genomes found in that sample.", placement = "right"),
                              bsTooltip("mags_in_db_interact", "This menu contains the set of genomes in currently selected sample. Select one, then select resolution parameters.", placement = "right"),
@@ -1064,6 +1077,12 @@ recplot_server <- function(input, output, session) {
         if(detected_fmt == "database"){
           shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
         }
+        if(detected_fmt == "genes"){
+          shinyalert("This looks like a GFF!", "Did you want to add predicted genes to your genomes? The file selection for that is on the Database Management tab!", type = "error")
+        }
+        if(detected_fmt == "assoc"){
+          shinyalert("This looks like an association file!", "This type of file is meant to associate separate contigs with a parent binned genome. Are you sure these are mapped reads?", type = "error")
+        }
         if(detected_fmt == "none"){
           shinyalert("I don't recognize this file!", "This doesn't look like the right kind of file! Are you sure this is a mapped read file?", type = "error")
         }
@@ -1086,6 +1105,8 @@ recplot_server <- function(input, output, session) {
   })
   
   observeEvent(input$contigs, {
+    detected_fmt = "none"
+    
     tryCatch({
       contigs <- choose_file(caption = "Select Reference Genomes")
     },
@@ -1098,9 +1119,22 @@ recplot_server <- function(input, output, session) {
       contigs <- "No genomes selected. Try again?"
     }else{
       if(file.exists(contigs)){
-        if(detect_file_format(contigs) != "fasta"){
-          shinyalert("Are these genomes?", "These look like something other than FASTA format genomes to me. Did you select the correct file?", type = "error")
-        } 
+        detected_fmt = detect_file_format(contigs)
+        if(detected_fmt == "sam" | detected_fmt == "bam" | detected_fmt == "blast"){
+          shinyalert("This looks like mapped reads!", "Are you sure these are genomes?", type = "error")
+        }
+        if(detected_fmt == "database"){
+          shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
+        }
+        if(detected_fmt == "none"){
+          shinyalert("I don't recognize this file!", "This doesn't look like the right kind of file! Are you sure this is a mapped read file?", type = "error")
+        }
+        if(detected_fmt == "genes"){
+          shinyalert("This looks like a a GFF!", "Did you want to add predicted genes to your genomes? The file selection for that is on the Database Management tab!", type = "error")
+        }
+        if(detected_fmt == "assoc"){
+          shinyalert("This looks like an association file!", "This type of file is meant to associate separate contigs with a parent binned genome. Are you sure these are genomes?", type = "error")
+        }
       }
     }
     
@@ -1108,6 +1142,8 @@ recplot_server <- function(input, output, session) {
   })
   
   observeEvent(input$mags, {
+    detected_fmt = "none"
+    
     tryCatch({
       mags <- choose_file(caption = "Select Contig-Genome Association File")
     },
@@ -1117,6 +1153,25 @@ recplot_server <- function(input, output, session) {
     })
     if(length(mags) == 0){
       mags <- "No association file selected. Try again?"
+    }else{
+      if(file.exists(mags)){
+        detected_fmt = detect_file_format(mags)
+        if(detected_fmt == "sam" | detected_fmt == "bam" | detected_fmt == "blast"){
+          shinyalert("This looks like mapped reads!", "Are you sure this is an association file?", type = "error")
+        }
+        if(detected_fmt == "database"){
+          shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
+        }
+        if(detected_fmt == "none"){
+          shinyalert("I don't recognize this file!", "You may have selected the wrong kind of file, or selected an association file with incorrect format.", type = "error")
+        }
+        if(detected_fmt == "genes"){
+          shinyalert("This looks like a a GFF!", "Did you want to add predicted genes to your genomes? The file selection for that is on the Database Management tab!", type = "error")
+        }
+        if(detected_fmt == "fasta"){
+          shinyalert("This looks like a FASTA file!", "Are you sure this is an association file and not genomes?", type = "error")
+        }
+      }
     }
     
     updateTextInput(session, "mag_file", value = mags)
@@ -1311,7 +1366,7 @@ recplot_server <- function(input, output, session) {
   
   observeEvent(input$add_sample,{
     
-    detected_fmt = ""
+    detected_fmt = "none"
     
     #Add a don't-do-this if there's not a selected DB
     if(input$exist_dbname == "" | input$exist_dbname == "No existing database selected. Try again?"){
@@ -1341,8 +1396,14 @@ recplot_server <- function(input, output, session) {
       if(detected_fmt == "database"){
         shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
       }
+      if(detected_fmt == "genes"){
+        shinyalert("This looks like a a GFF!", "Did you want to add predicted genes to your genomes? The file selection for that is down below!", type = "error")
+      }
       if(detected_fmt == "none"){
         shinyalert("I don't recognize this file!", "This doesn't look like the right kind of file! Are you sure this is a mapped read file?", type = "error")
+      }
+      if(detected_fmt == "assoc"){
+        shinyalert("This looks like an association file!", "This type of file is meant to associate separate contigs with a parent binned genome. Are you sure these are mapped reads?", type = "error")
       }
       }
     }
@@ -1356,7 +1417,6 @@ recplot_server <- function(input, output, session) {
       updateSelectInput(session, "fmt_add", selected = "sam")
     }
     
-    #checks for pysam in case
     if(detected_fmt == "bam"){
       updateSelectInput(session, "fmt_add", selected = "bam")
     }
@@ -1429,6 +1489,9 @@ recplot_server <- function(input, output, session) {
       return(NA)
     }
     
+    detected_fmt = "none"
+
+    
     tryCatch({
       new_genes <- choose_file(caption = "Select Annotated Genes to Add")
     },
@@ -1439,7 +1502,29 @@ recplot_server <- function(input, output, session) {
     
     if(length(new_genes) == 0){
       new_genes <- "No genes selected. Try again?"
+    }else{
+      if(file.exists(new_genes)){
+        detected_fmt = detect_file_format(new_genes)
+        if(detected_fmt == "fasta"){
+          shinyalert("This looks like a FASTA file!", "Are you sure this is a Prodigal GFF?", type = "error")
+        }
+        if(detected_fmt == "database"){
+          shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, it should be selected up above!", type = "error")
+        }
+        if(detected_fmt == "none"){
+          shinyalert("I don't recognize this file!", "This doesn't look like the right kind of file! Are you sure this is a GFF made by Prodigal?", type = "error")
+        }
+        if(detected_fmt == "sam" | detected_fmt == "bam" | detected_fmt == "blast"){
+          shinyalert("This file looks like mapped reads to me!", "Did you want to add a sample? The button fo that is up above!", type = "error")
+        }
+        if(detected_fmt == "assoc"){
+          shinyalert("This looks like an association file!", "This type of file is meant to associate separate contigs with a parent binned genome. Are you sure this is a GFF made by Prodigal?", type = "error")
+        }
+      }
     }
+    
+    
+
     
     updateTextInput(session, "add_gen", value = new_genes)
     
@@ -1900,6 +1985,429 @@ recplot_server <- function(input, output, session) {
     
   })
   
+  observeEvent(input$print_interact, {
+    
+    if(is.na(plotting_materials)[1]){
+      
+      shinyalert("Cannot print plot.", "There is no genome currently loaded. You need to hit 'View Selected Genome' first.", type = "error")
+      
+      return(NA)
+      
+    }else{
+      
+      if(input$pdf_name_interact == ""){
+        
+        shinyalert(
+          "The output interactive plot needs a name.", "You can enter a name here, then hit the Save Plot button again to save it.", type = "input",
+          callbackR = function(x) { 
+            updateTextInput(session, "pdf_name_interact", value = x)
+          }
+        )
+        
+        return(NA)
+        
+      }else{
+        
+    #Reset this each time to make checking for it more consistent.
+    warning_plot <- NA
+    
+    progress <- shiny::Progress$new()
+    on.exit(progress$close())
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.10, detail = "Please be patient. Printing an interactive plot takes a bit.")
+    
+    base <- one_mag()
+    
+    req(!is.na(base))
+    
+    bp_unit <- base[[2]]
+    bp_div <- base[[3]]
+    pos_max <- base[[4]]
+    base <- base[[1]]
+    
+    old_base <- base
+    
+    ends <- base[, max(End), by = contig]
+    ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
+    
+    if(input$task == "contigs"){
+      
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      #If the final bin was too small, removes it.
+      base <- base[Start <= End,]
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
+      
+      p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
+                                                                                             "\nPos. in Contig: ", Start, "-", End,
+                                                                                             "\nNorm. Bin Count: ", round(bp_count))))+ 
+        scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
+        ylab("Percent Identity") +
+        xlab(paste("Position in Genome", bp_unit)) +
+        scale_y_continuous(expand = c(0, 0)) +
+        scale_x_continuous(expand = c(0, 0)) +
+        theme(legend.position = "none", 
+              axis.line = element_line(colour = "black"),
+              axis.title = element_text(size = 14),
+              axis.text = element_text(size = 14)) +
+        annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
+                 ymin = input$in_group_min_interact, 
+                 ymax = 100, fill = "darkblue", alpha = .15)+
+        geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
+        geom_raster()
+      
+      base <- old_base
+      
+      #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
+      base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
+      
+      setkeyv(base, c("group_label", "seq_pos"))
+      
+      depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
+      colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
+      
+      group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
+      
+      old_depth <- depth_data
+      
+      depth_data$count[depth_data$count == 0] <- NA
+      
+      #If bins need deleted at ends of contigs, this does so
+      depth_data <- depth_data[Start <= End, ]
+      
+      seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
+                                                                                                                               "\nPos. in Contig: ", Start, "-", End,
+                                                                                                                               "\nSeq. Depth: ", round(count))))+
+        geom_step(alpha = 0.75) +
+        scale_y_continuous(trans = "log10") +
+        scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
+        theme(legend.position = "none", 
+              panel.border = element_blank(), 
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              axis.line = element_line(colour = "black"), 
+              panel.background = element_blank(), 
+              axis.title.x = element_blank(), 
+              #axis.text.y = element_text(angle = 90, hjust = 0.5),
+              axis.title = element_text(size = 14),
+              axis.text = element_text(size = 14)) +
+        scale_color_manual(values = group.colors) +
+        ylab("Log 10 Depth")
+      
+      
+    }else{
+      
+      if(is.na(gene_data)){
+        
+        #Check if there was a switch from contigs to genes without reloading
+        warning_plot <- ggplot(data = NULL, aes(x = 1, y = 1, label = "This is not an error message.\nIt seems you switched from viewing contigs to genes.\nYour Recruitment Plot needs the gene data.\nPlease hit the 'View Selected Genome' button again."))+
+          geom_text() +
+          theme(panel.background = element_blank(),
+                axis.title = element_blank(),
+                axis.text = element_blank(),
+                axis.ticks = element_blank())
+        
+        warning_plot <- ggplotly(warning_plot)
+        
+        progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Please be patient. The interactive plots take longer.")
+        
+        return(warning_plot)
+        
+        
+      }
+      
+      #fixup alterations
+      gene_reset <- gene_data
+      
+      #read rec plot
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      #If the final bin was too small, removes it.
+      base <- base[Start <= End,]
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
+      
+      
+      #Genes only
+      if(input$regions_interact == 1){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$gene_annotation == "N/A"] <- NA
+      }
+      #IGR only
+      if(input$regions_interact == 2){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$gene_annotation != "N/A"] <- NA
+      }
+      #Genes + long IGR
+      if(input$regions_interact == 3){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count[base$End-base$Start+1 < 6] <- NA
+      }
+      if(input$regions_interact == 4){
+        base <- old_base
+        
+        ratio <- nrow(base)/nrow(gene_data)
+        
+        setkeyv(base, c("contig", "Start"))
+        setkey(gene_data, "contig")
+        
+        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        
+        base$bp_count <- base$bp_count
+      }
+      
+      #Sets any starts < trunc degree to trunc_degree
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      #If the final bin was too small, removes it.
+      base <- base[Start <= End,]
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
+      
+      p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
+                                                                                             "\nPos. in Contig: ", Start, "-", End,
+                                                                                             "\nNorm. Bin Count: ", round(bp_count),
+                                                                                             "\nGene ID: ", gene_name,
+                                                                                             "\nGene Range: ", gene_start, "-", gene_end,
+                                                                                             "\nGene Strand: ", gene_strand,
+                                                                                             "\nAnnotation: ", gene_annotation)))+ 
+        scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
+        ylab("Percent Identity") +
+        xlab(paste("Position in Genome", bp_unit)) +
+        scale_y_continuous(expand = c(0, 0)) +
+        scale_x_continuous(expand = c(0, 0), limits = c(0, pos_max/bp_div)) +
+        theme(legend.position = "none", 
+              axis.line = element_line(colour = "black"),
+              axis.title = element_text(size = 14),
+              axis.text = element_text(size = 14)) +
+        annotate("rect", xmin = 0, xmax = pos_max/bp_div, 
+                 ymin = input$in_group_min_interact, 
+                 ymax = 100, fill = "darkblue", alpha = .15)+
+        geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
+        geom_raster()
+      
+      
+      #seqdepth chart
+      base <- old_base
+      
+      #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
+      base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
+      
+      setkeyv(base, c("group_label", "seq_pos"))
+      
+      depth_data <- base[, list(sum(bp_count/(End-Start+1)), unique(Start), unique(End), unique(contig)), by = key(base)]
+      colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
+      
+      group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
+      
+      old_depth <- depth_data
+      
+      depth_data$count[depth_data$count == 0] <- NA
+      
+      #If bins need deleted at ends of contigs, this does so
+      depth_data <- depth_data[Start <= End, ]
+      
+      
+      #reset
+      gene_data <- gene_reset
+      
+      gene_data <- rbind(gene_data, gene_data)
+      
+      setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+      setkey(gene_data, "contig")
+      
+      depth_data[, gene_name := gene_data$gene_name]
+      depth_data[, gene_start := gene_data$gene_start]
+      depth_data[, gene_end := gene_data$gene_end]
+      depth_data[, gene_strand := gene_data$strand]
+      depth_data[, gene_annotation := gene_data$annotation]
+      
+      setkeyv(depth_data, c("group_label", "seq_pos"))
+      
+      #Genes only
+      if(input$regions_interact == 1){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count[depth_data$gene_annotation == "N/A"] <- NA
+      }
+      #IGR only
+      if(input$regions_interact == 2){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count[depth_data$gene_annotation != "N/A"] <- NA
+      }
+      #Genes + long IGR
+      if(input$regions_interact == 3){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count[depth_data$End-depth_data$Start + 1 < 6] <- NA
+      }
+      if(input$regions_interact == 4){
+        depth_data <- old_depth
+        
+        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
+        setkey(gene_data, "contig")
+        
+        depth_data[, gene_name := gene_data$gene_name]
+        depth_data[, gene_start := gene_data$gene_start]
+        depth_data[, gene_end := gene_data$gene_end]
+        depth_data[, gene_strand := gene_data$strand]
+        depth_data[, gene_annotation := gene_data$annotation]
+        
+        setkeyv(depth_data, c("group_label", "seq_pos"))
+        
+        depth_data$count <- depth_data$count
+      }
+      
+      #If bins need deleted at ends of contigs, this does so
+      depth_data <- depth_data[Start <= End, ]
+      
+      seq_depth_chart <- ggplot(depth_data, aes(x = seq_pos, y = count, colour=group_label, group = group_label, text = paste0("Contig: ", contig,
+                                                                                                                               "\nPos. in Contig: ", Start, "-", End,
+                                                                                                                               "\nNorm. Bin Count: ", round(count),
+                                                                                                                               "\nGene ID: ", gene_name,
+                                                                                                                               "\nGene Range: ", gene_start, "-", gene_end,
+                                                                                                                               "\nGene Strand: ", gene_strand,
+                                                                                                                               "\nAnnotation: ", gene_annotation)))+
+        geom_step(alpha = 0.75) +
+        scale_y_continuous(trans = "log10") +
+        scale_x_continuous(expand=c(0,0), limits = c(0, pos_max/bp_div))+
+        theme(legend.position = "none", 
+              panel.border = element_blank(), 
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              axis.line = element_line(colour = "black"), 
+              panel.background = element_blank(), 
+              axis.title.x = element_blank(), 
+              #axis.text.y = element_text(angle = 90, hjust = 0.5),
+              axis.title = element_text(size = 14),
+              axis.text = element_text(size = 14)) +
+        scale_color_manual(values = group.colors) +
+        ylab("Log 10 Depth")
+      
+    }
+    
+    a <- list(
+      range = c(min(depth_data$count, na.rm = T), max(depth_data$count, na.rm = T)),
+      showticklabels = TRUE,
+      exponentformat = "e"
+    )
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.5, detail = "Plots created. Making first plot interactive...")
+    
+    seq_depth_chart <- ggplotly(seq_depth_chart, dynamicTicks = T, tooltip = c("text")) %>% 
+      layout(plot_bgcolor = "grey90", yaxis = a)
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.6, detail = "Making second plot interactive...")
+    
+    read_rec_plot <- ggplotly(p, dynamicTicks = T, tooltip = c("text")) %>% 
+      layout(plot_bgcolor = "grey90") %>% 
+      style(hoverinfo = "none", traces = c(1, 2))
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.7, detail = "Formatting plots")
+    
+    overplot <- subplot(list(seq_depth_chart, read_rec_plot), nrows = 2, shareX = T, heights = c(1/3, 2/3))
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 0.85, detail = "Saving plot")
+    
+    #todo
+    saveWidget(overplot, paste0(input$pdf_name_interact, ".html"))
+    
+    progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Done!")
+    
+    }
+      
+    }
+    return(NA)
+  })
   
   one_mag <- reactive({
     
@@ -2482,8 +2990,9 @@ recplot_server <- function(input, output, session) {
       #updateNumericInput(session, "low_bound", value = input$low_bound_interact)
       updateNumericInput(session, "in_group_min_stat", value = input$in_group_min_interact)
       updateSelectInput(session, "regions_stat", selected = input$regions_interact)
+      updateTextInput(session, "pdf_name", value = input$pdf_name_interact)
     }
-    if(input$tabs == "Hover Plot"){
+    if(input$tabs == "Interactive Plot"){
       if(!is.null(input$samples)){
         updateSelectInput(session, "samples_interact", selected = input$samples)
       }
@@ -2495,6 +3004,7 @@ recplot_server <- function(input, output, session) {
       #updateNumericInput(session, "low_bound_interact", value = input$low_bound)
       updateNumericInput(session, "in_group_min_interact", value = input$in_group_min_stat)
       updateSelectInput(session, "regions_interact", selected = input$regions_stat)
+      updateTextInput(session, "pdf_name_interact", value = input$pdf_name)
     }
     
     
@@ -2504,7 +3014,7 @@ recplot_server <- function(input, output, session) {
   session$onSessionEnded(function() {
     
     cat("\nThank you for using Recruitment Plots!\n")
-    cat("Any databases you created or plots you made are stored in:")
+    cat("Any databases you created or plots you made are stored in: ")
     cat(getwd())
     cat("\n")
     stopApp()
