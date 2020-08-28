@@ -1752,23 +1752,41 @@ def check_presence_of_genes(database):
 def detect_file_format(file):
 	detected_format = "none"
 	
+	#I don't know how this could happen, but good to have it in place?
+	toomuch = 0
+	
 	#If the user supplies a mismatch file, then this will run. Otw, we should only run the requested check to avoid excess effort.
 	isfasta = detect_fasta(file)
 	isbam = detect_bam(file)
 	issam = detect_sam(file)
 	isblast = detect_blast(file)
 	isdb = detect_is_db(file)
+	isassoc = detect_is_assoc(file)
+	isprodigalgff = detect_is_prodigal(file)
 		
 	if isfasta:
 		detected_format = "fasta"
+		toomuch += 1
 	if isbam:
 		detected_format = "bam"
+		toomuch += 1
 	if issam:
 		detected_format = "sam"
+		toomuch += 1
 	if isblast:
 		detected_format = "blast"
+		toomuch += 1
 	if(isdb):
 		detected_format = "database"
+		toomuch += 1
+	if(isassoc):
+		detected_format = "assoc"
+		toomuch += 1
+	if(isprodigalgff):
+		detected_format = "genes"
+		toomuch += 1
+	if toomuch > 1:
+		detected_format = "none"
 	
 	return(detected_format)
 	
@@ -1864,3 +1882,60 @@ def detect_is_db(dbname):
 	except :
 		isdb = False
 	return isdb
+
+#todo write these, include in fmt checker
+def detect_is_assoc(file):
+	fh = open(file, "r")
+	
+	fmt_fine = True
+	
+	#Check first line
+	try:
+		line = fh.readline()
+	except :
+		fmt_fine = False
+	else :
+		segment = line.strip().split()
+		if len(segment) != 2:
+			fmt_fine = False
+	
+	#Check the next 29 lines, or all until EOF.
+	for i in range(1, 30):
+		try:
+			line = fh.readline()
+		except :
+			fmt_fine = False
+			break
+		else:
+			segment = line.strip().split()
+			if len(segment) == 2:
+				pass
+			#Basically an EOF check.
+			if len(line) == 0:
+				break
+			else:
+				fmt_fine = False
+				break
+	
+	fh.close()
+	
+	return(fmt_fine)
+	
+def detect_is_prodigal(file):
+	fh = open(file, "r")
+	
+	fmt_fine = True
+	
+	try:
+		line
+	except :
+		fmt_fine = False
+	else:
+		if line.startswith("##gff-version"):
+			pass
+		else:
+			fmt_fine = False
+	
+	fh.close()
+	
+	return(fmt_fine)
