@@ -1787,7 +1787,7 @@ def detect_file_format(file):
 		toomuch += 1
 	if toomuch > 1:
 		detected_format = "none"
-	
+		
 	return(detected_format)
 	
 def detect_fasta(file):
@@ -1910,10 +1910,10 @@ def detect_is_assoc(file):
 			segment = line.strip().split()
 			if len(segment) == 2:
 				pass
-			#Basically an EOF check.
-			if len(line) == 0:
-				break
 			else:
+				#Basically an EOF check - skip the fmt overwrite if the file ended.
+				if len(line) == 0:
+					break
 				fmt_fine = False
 				break
 	
@@ -1939,3 +1939,5 @@ def detect_is_prodigal(file):
 	fh.close()
 	
 	return(fmt_fine)
+	
+print(detect_file_format(sys.argv[1]))
