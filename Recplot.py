@@ -1789,9 +1789,6 @@ def detect_file_format(file):
 	if toomuch > 1:
 		detected_format = "none"
 		
-	print(isfasta, isbam, issam, isblast, isdb, isassoc, isprodigalgff)
-	print(toomuch)
-		
 	return(detected_format)
 	
 def detect_fasta(file):
@@ -1931,7 +1928,7 @@ def detect_is_prodigal(file):
 	fmt_fine = True
 	
 	try:
-		line
+		line = fh.readline()
 	except :
 		fmt_fine = False
 	else:
@@ -1943,3 +1940,4 @@ def detect_is_prodigal(file):
 	fh.close()
 	
 	return(fmt_fine)
+	
