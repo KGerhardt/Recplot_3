@@ -1687,6 +1687,7 @@ def assess_samples(database):
 	samples = []
 	
 	for samp in cursor:
+		
 		samples.append(samp)
 		
 	cursor.close()

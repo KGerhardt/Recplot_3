@@ -1621,6 +1621,16 @@ recplot_server <- function(input, output, session) {
       
       labels <- unlist(samples_in_db)
       
+      #pretty names
+      labels <- unlist(lapply(labels, function(x){
+        
+        str <- strsplit(x, split = "[/\\]")[[1]]
+        
+        return(str[length(str)])
+        
+      }))
+      
+      
       samples_in_db <- unlist(samples_in_db)
       names(samples_in_db) = labels
       
@@ -1872,9 +1882,15 @@ recplot_server <- function(input, output, session) {
                                           ends = ending
         )
         
+        
+          
+          pretty_name <- strsplit(input$samples, split = "[/\\]")[[1]]
+          
+          pretty_name <- pretty_name[length(pretty_name)]
+        
         title <- ggdraw() + 
           draw_label(
-            paste("Read Recruitment Plot for sample:", input$samples, "MAG:", input$mags_in_db),
+            paste("Read Recruitment Plot for sample:", pretty_name, "MAG:", input$mags_in_db),
             fontface = 'bold',
             x = 0,
             hjust = 0
