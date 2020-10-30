@@ -111,17 +111,19 @@
     }
     
     use_miniconda(condaenv = "recruitment_plots", required = T)
-    get_python()
     
     if(get_sys() != "Windows"){
       if(py_module_available("pysam")){
-        cat("Attempting to install pysam to recruitment_plots...\n")
+        cat("Attempting to install pysam to recruitment_plots... ")
         try({
           py_install(packages = "pysam", envname = "recruitment_plots", pip = T)
+          cat("Done!\n")
         }) 
       }else{
         cat("Pysam already installed. You probably shouldn't be seeing this warning. Did you call prepare_environment() twice?\n")
       }
+      
+      get_python()
       
     }
     
@@ -212,18 +214,31 @@
     
     group.colors <- c(depth.in = "darkblue", depth.out = "lightblue", depth.in.nil = "darkblue", depth.out.nil = "lightblue")
     
+    #This seems to be working.
     #Sets any starts < trunc degree to trunc_degree
     base <- base[Start < trunc_degree, Start := trunc_degree]
+    
+    base[, contig_len := max(End), by = contig]
+    base[End == contig_len, End := End - trunc_degree, ]
+    
     #Selects the bins at the end of each contig and subtracts trunc degree from it
-    base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
-    #If the final bin was too small, removes it.
+    #base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+    
+    
+    #If the final bin was too small, removes it as unplottable.
     base <- base[Start <= End,]
+    
+    #fwrite(ends, "endings.txt", sep = "\t")
+    
+    #b2 <- base
+    #setkeyv(b2, c("contig", "Start", "Pct_ID_bin"))
+    #fwrite(b2, "base_inital_mod.txt", sep = "\t")
     
     #Allows for count normalization by bin width across all bins
     norm_factor <- min(base$End-base$Start) + 1
     
     #Lower left panel
-    
+    {    
     p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10((bp_count * (norm_factor/(End-Start+1))))))+ 
       scale_fill_gradient(low = "white", high = "black",  na.value = "#EEF7FA")+
       ylab("Percent Identity") +
@@ -242,12 +257,13 @@
                       ymax = 100, fill = "darkblue", alpha = .15)
     
     read_rec_plot <- p + geom_vline(xintercept = ends$V1/bp_div[-nrow(ends)], col = "#AAAAAA40")
+    }
     
     base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "depth.in", "depth.out")]
     setkeyv(base, c("group_label", "seq_pos"))
     
     #upper left panel
-    
+    {
     depth_data <- base[, sum(bp_count/(End-Start+1), na.rm = T), by = key(base)]
     colnames(depth_data)[3] = "count"
     
@@ -280,6 +296,7 @@
     if(nrow(nil_depth_data) > 0){
       seq_depth_chart <- seq_depth_chart + geom_segment(data = nil_depth_data, aes(x = seq_pos, xend = seq_pos, y = 0, yend = seg_upper_bound, color = group_label, group = group_label))
       
+    }
     }
     
     #Seq. depth histograms (top right panel)
@@ -406,7 +423,7 @@
       
       if(linear == 1){
         
-        p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
+        p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin-(id_break))) +
           geom_step() +
           scale_y_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 3)) + 
           scale_x_continuous(expand = c(0,0)) +
@@ -425,7 +442,7 @@
         
       } else {
         
-        p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin)) +
+        p4 <- ggplot(data = bp_data, aes(y = V1, x = Pct_ID_bin-(id_break))) +
           geom_step() +
           scale_y_continuous(expand = c(0,0), trans = "log10", breaks = scales::log_breaks(n = 4)) + 
           scale_x_continuous(expand = c(0,0)) +
@@ -450,6 +467,12 @@
       
     }
     
+    
+    
+    #I worry that the modify in place permanently whoopsies things, so I change it back just in case
+    base[End == contig_len-trunc_degree, End := End + trunc_degree, ]
+    base[, contig_len := NULL, ]
+    
     overall_plot <- plot_grid(seq_depth_chart, seq_depth_hist, read_rec_plot, bp_count_hist, align = "hv", ncol = 2, rel_widths = c(2.7, 1), rel_heights = c(1, 2.3))
     
     return(overall_plot)
@@ -457,68 +480,81 @@
   }
   
   create_static_data <- function(base, bp_unit, bp_div, pos_max, in_grp_min, id_break, width, linear, showpeaks, ends, trunc_behavior = "ends", trunc_degree = as.integer(75), ...){
+
+    setkeyv(base, c("contig", "Start", "Pct_ID_bin"))
     
+    base[, contig_len := max(End), by = contig]
+    base[End == contig_len, End := End - trunc_degree, ]
     
-    if("gene_name" %in% colnames(base)){
+    returnable_base <- base
+    
+    #fwrite(base, "base_print_data.txt", sep = "\t")
+    
+    if("gene_name" %in% colnames(returnable_base)){
       
       #Allows for count normalization by bin width across all bins
-      norm_factor <- min(base$End-base$Start) + 1
+      norm_factor <- min(returnable_base$End-returnable_base$Start) + 1
       
-      base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
+      returnable_base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
       
-      base[, seq_pos := NULL,]
+      returnable_base[, seq_pos := NULL,]
       
-      base[, id_lower := Pct_ID_bin - id_break, ]
+      returnable_base[, id_lower := Pct_ID_bin - id_break, ]
       
-      base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
+      returnable_base[, group_label := ifelse(returnable_base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
       
-      base <- base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label, gene_name, gene_start, gene_end, gene_strand, gene_annotation),]
+      returnable_base <- returnable_base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label, gene_name, gene_start, gene_end, gene_strand, gene_annotation),]
       
-      colnames(base)[1:8] = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
+      colnames(returnable_base)[1:8] = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
       
-      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
+      setkeyv(returnable_base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
       
-      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "pct_id_group"))
+      setkeyv(returnable_base, c("contig_name", "start_pos_in_contig", "pct_id_group"))
       
       #upper left panel
       
-      depth_data <- base[, list(sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), unique(gene_name), unique(gene_start), unique(gene_end), unique(gene_strand), unique(gene_annotation)), by = key(base)]
-      colnames(depth_data)[5:9] = c("average_sequencing_depth", "gene_name", "gene_start", "gene_end", "gene_strand", "gene_annotation")
+      depth_data <- returnable_base[, list(sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), unique(gene_name), unique(gene_start), unique(gene_end), unique(gene_strand), unique(gene_annotation)), by = key(returnable_base)]
+      colnames(depth_data)[4:9] = c("average_sequencing_depth", "gene_name", "gene_start", "gene_end", "gene_strand", "gene_annotation")
       
       setkeyv(depth_data, c("contig_name", "pct_id_group", "start_pos_in_contig"))
       
     }else{
       #Allows for count normalization by bin width across all bins
-      norm_factor <- min(base$End-base$Start) + 1
+      norm_factor <- min(returnable_base$End-returnable_base$Start) + 1
       
-      base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
+      returnable_base[, normalized_count := bp_count * (norm_factor/(End-Start+1)),]
       
-      base[, seq_pos := NULL,]
+      returnable_base[, seq_pos := NULL,]
       
-      base[, id_lower := Pct_ID_bin - id_break, ]
+      returnable_base[, id_lower := Pct_ID_bin - id_break, ]
       
-      base[, group_label := ifelse(base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
+      returnable_base[, group_label := ifelse(returnable_base$Pct_ID_bin-id_break >= in_grp_min, "in_group", "out_group"), ]
       
-      base <- base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label),]
+      returnable_base <- returnable_base[, list(contig, Start, End, id_lower, Pct_ID_bin, bp_count, normalized_count, group_label),]
       
-      colnames(base) = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
+      #todo
+      #fwrite(returnable_base, "returnable_base_reorg.txt", sep = "\t")
       
-      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
+      colnames(returnable_base) = c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "raw_count_of_bp_in_bin", "normalized_count_of_bp_in_bin", "pct_id_group")
       
-      setkeyv(base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "pct_id_group"))
+      setkeyv(returnable_base, c("contig_name", "start_pos_in_contig", "end_pos_in_contig", "lower_pct_id", "upper_pct_id", "pct_id_group"))
+      
+      setkeyv(returnable_base, c("contig_name", "start_pos_in_contig", "pct_id_group"))
       
       #upper left panel
       
-      depth_data <- base[, sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), by = key(base)]
+      depth_data <- returnable_base[, sum(raw_count_of_bp_in_bin/(end_pos_in_contig-start_pos_in_contig + 1), na.rm = T), by = key(returnable_base)]
       colnames(depth_data)[ncol(depth_data)] = "average_sequencing_depth"
       
       setkeyv(depth_data, c("contig_name", "pct_id_group", "start_pos_in_contig"))
       
     }
     
+    #I worry that the modify in place permanently whoopsies things, so I change it back just in case
+    base[End == contig_len-trunc_degree, End := End + trunc_degree, ]
+    base[, contig_len := NULL, ]
     
-    
-    return(list(base, depth_data))
+    return(list(returnable_base, depth_data))
     
   }
   
@@ -1394,7 +1430,7 @@ recplot_server <- function(input, output, session) {
         shinyalert("This looks like a FASTA file!", "Are you sure these are mapped reads and NOT raw reads or genomes?", type = "error")
       }
       if(detected_fmt == "database"){
-        shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, go the the database management tab and select it there!", type = "error")
+        shinyalert("This looks like a SQL Database!", "If this is an old Recruitment Plot database, select it up above instead!", type = "error")
       }
       if(detected_fmt == "genes"){
         shinyalert("This looks like a a GFF!", "Did you want to add predicted genes to your genomes? The file selection for that is down below!", type = "error")
@@ -1661,7 +1697,6 @@ recplot_server <- function(input, output, session) {
       
       plotting_materials <<- pydat_to_recplot_dat(recplot_data, contig_names)
       
-      
       old_value <- input$in_group_min_stat
       
       updateNumericInput(session, "in_group_min_stat", value = old_value-1)
@@ -1756,8 +1791,6 @@ recplot_server <- function(input, output, session) {
         
         if(input$task == "genes"){
           
-          
-          
           #Genes only
           if(input$regions_stat == 1){
             base <- one_mag()[[1]]
@@ -1773,7 +1806,7 @@ recplot_server <- function(input, output, session) {
             base[, gene_strand := rep(gene_data$strand, each = ratio) ]
             base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
             
-            base[gene_annotation != "N/A", bp_count := NA,]
+            base[gene_annotation == "N/A", bp_count := NA,]
           }
           #IGR only
           if(input$regions_stat == 2){
@@ -1790,7 +1823,7 @@ recplot_server <- function(input, output, session) {
             base[, gene_strand := rep(gene_data$strand, each = ratio) ]
             base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
             
-            base[gene_annotation == "N/A", bp_count := NA,]
+            base[gene_annotation != "N/A", bp_count := NA,]
           }
           #Genes + long IGR
           if(input$regions_stat == 3){
@@ -1808,6 +1841,21 @@ recplot_server <- function(input, output, session) {
             base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
             
             base <- base[End-Start+1 < 6, bp_count := NA,]
+          }
+          if(input$regions_stat == 4){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
           }
           
         }
@@ -1917,7 +1965,7 @@ recplot_server <- function(input, output, session) {
             base[, gene_strand := rep(gene_data$strand, each = ratio) ]
             base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
             
-            base[gene_annotation != "N/A", bp_count := NA,]
+            base[gene_annotation == "N/A", bp_count := NA,]
           }
           #IGR only
           if(input$regions_stat == 2){
@@ -1934,7 +1982,7 @@ recplot_server <- function(input, output, session) {
             base[, gene_strand := rep(gene_data$strand, each = ratio) ]
             base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
             
-            base[gene_annotation == "N/A", bp_count := NA,]
+            base[gene_annotation != "N/A", bp_count := NA,]
           }
           #Genes + long IGR
           if(input$regions_stat == 3){
@@ -1953,6 +2001,22 @@ recplot_server <- function(input, output, session) {
             
             base <- base[End-Start+1 < 6, bp_count := NA,]
           }
+          #all regions
+          if(input$regions_stat == 4){
+            base <- one_mag()[[1]]
+            
+            ratio <- nrow(base)/nrow(gene_data)
+            
+            setkeyv(base, c("contig", "Start"))
+            setkey(gene_data, "contig")
+            
+            base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+            base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+            base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+            base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+            base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+            
+          }
           
         }
         
@@ -1967,6 +2031,8 @@ recplot_server <- function(input, output, session) {
                                         showpeaks= input$show_peaks,
                                         ends = ending
         )
+        
+        
         
         progress$set(message = "Printing plot data", value = 0.66, detail = "Writing data")
         
@@ -2024,7 +2090,7 @@ recplot_server <- function(input, output, session) {
     pos_max <- base[[4]]
     base <- base[[1]]
     
-    old_base <- base
+    incoming_base <- base
     
     ends <- base[, max(End), by = contig]
     ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
@@ -2032,8 +2098,13 @@ recplot_server <- function(input, output, session) {
     if(input$task == "contigs"){
       
       base <- base[Start < trunc_degree, Start := trunc_degree]
+      
       #Selects the bins at the end of each contig and subtracts trunc degree from it
-      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      base[, contig_len := max(End), by = contig]
+      base[End == contig_len, End := End - trunc_degree, ]
+      
+      old_base <- base
+      
       #If the final bin was too small, removes it.
       base <- base[Start <= End,]
       
@@ -2061,6 +2132,10 @@ recplot_server <- function(input, output, session) {
         geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
       
+      base[End == contig_len-trunc_degree, End := End + trunc_degree, ]
+      base[, contig_len := NULL, ]
+      
+      #Reset
       base <- old_base
       
       #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
@@ -2099,6 +2174,8 @@ recplot_server <- function(input, output, session) {
         scale_color_manual(values = group.colors) +
         ylab("Log 10 Depth")
       
+      base[End == contig_len-trunc_degree, End := End + trunc_degree, ]
+      base[, contig_len := NULL, ]
       
     }else{
       
@@ -2124,12 +2201,22 @@ recplot_server <- function(input, output, session) {
       #fixup alterations
       gene_reset <- gene_data
       
+      ratio <- nrow(base)/nrow(gene_data)
+      
+      setkeyv(base, c("contig", "Start"))
+      setkey(gene_data, "contig")
+      
+      base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+      base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+      base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+      base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+      base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+      
       #read rec plot
       base <- base[Start < trunc_degree, Start := trunc_degree]
       #Selects the bins at the end of each contig and subtracts trunc degree from it
-      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
-      #If the final bin was too small, removes it.
-      base <- base[Start <= End,]
+      base[, contig_len := max(End), by = contig]
+      base[End == contig_len, End := End - trunc_degree, ]
       
       norm_factor <- min(base$End-base$Start) + 1
       
@@ -2137,81 +2224,38 @@ recplot_server <- function(input, output, session) {
       
       base$bp_count <- base$bp_count*(norm_factor/widths)
       
+      gene_base <- base
+      
+      #If the final bin was too small, remeoves it.
+      base <- base[Start <= End,]
       
       #Genes only
       if(input$regions_interact == 1){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$gene_annotation == "N/A"] <- NA
       }
       #IGR only
       if(input$regions_interact == 2){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$gene_annotation != "N/A"] <- NA
       }
       #Genes + long IGR
       if(input$regions_interact == 3){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$End-base$Start+1 < 6] <- NA
       }
       if(input$regions_interact == 4){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count <- base$bp_count
       }
-      
-      #Sets any starts < trunc degree to trunc_degree
-      base <- base[Start < trunc_degree, Start := trunc_degree]
-      #Selects the bins at the end of each contig and subtracts trunc degree from it
-      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
-      #If the final bin was too small, removes it.
-      base <- base[Start <= End,]
       
       norm_factor <- min(base$End-base$Start) + 1
       
@@ -2243,7 +2287,7 @@ recplot_server <- function(input, output, session) {
       
       
       #seqdepth chart
-      base <- old_base
+      base <- gene_base
       
       #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
       base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
@@ -2255,17 +2299,13 @@ recplot_server <- function(input, output, session) {
       
       group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
       
-      old_depth <- depth_data
-      
       depth_data$count[depth_data$count == 0] <- NA
       
       #If bins need deleted at ends of contigs, this does so
       depth_data <- depth_data[Start <= End, ]
       
-      
       #reset
       gene_data <- gene_reset
-      
       gene_data <- rbind(gene_data, gene_data)
       
       setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
@@ -2279,35 +2319,19 @@ recplot_server <- function(input, output, session) {
       
       setkeyv(depth_data, c("group_label", "seq_pos"))
       
+      gene_depth <- depth_data
+      
       #Genes only
       if(input$regions_interact == 1){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
-        
-        setkeyv(depth_data, c("group_label", "seq_pos"))
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         depth_data$count[depth_data$gene_annotation == "N/A"] <- NA
       }
       #IGR only
       if(input$regions_interact == 2){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         setkeyv(depth_data, c("group_label", "seq_pos"))
         
@@ -2315,32 +2339,16 @@ recplot_server <- function(input, output, session) {
       }
       #Genes + long IGR
       if(input$regions_interact == 3){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         setkeyv(depth_data, c("group_label", "seq_pos"))
         
         depth_data$count[depth_data$End-depth_data$Start + 1 < 6] <- NA
       }
       if(input$regions_interact == 4){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         setkeyv(depth_data, c("group_label", "seq_pos"))
         
@@ -2403,6 +2411,9 @@ recplot_server <- function(input, output, session) {
     
     progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Done!")
     
+    base <- NULL
+    base<- incoming_base
+    
     }
       
     }
@@ -2438,8 +2449,6 @@ recplot_server <- function(input, output, session) {
     pos_max <- base[[4]]
     base <- base[[1]]
     
-    old_base <- base
-    
     ending <- base[, max(End), by = contig]
     ending[, V1 := cumsum(V1) - 1 + 1:nrow(ending)]
     
@@ -2460,78 +2469,51 @@ recplot_server <- function(input, output, session) {
         return(warning_plot)
       }
       
+      ratio <- nrow(base)/nrow(gene_data)
+      
+      setkeyv(base, c("contig", "Start"))
+      setkey(gene_data, "contig")
+      
+      base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+      base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+      base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+      base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+      base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+      
+      gene_base <- base
+      
       #Genes only
       if(input$regions_stat == 1){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$gene_annotation == "N/A"] <- NA
       }
       #IGR only
       if(input$regions_stat == 2){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$gene_annotation != "N/A"] <- NA
       }
       #Genes + long IGR
       if(input$regions_stat == 3){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$End-base$Start+1 < 6] <- NA
-        
       }
+      #All regions
       if(input$regions_stat == 4){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count <- base$bp_count
       }
       
       if(sum(!is.na(base$bp_count)) == 0){
         static_plot <- ggplot(data.table(1, 1), aes(x = 1, y = 1, label = "No regions with valid counts were detected.\nIt's possible that no genes were\npredicted for this genome."))+
-          geom_text() +
+          geom_text(size = 18) +
           theme(plot.background = element_blank(),
                 axis.text = element_blank(),
                 axis.title = element_blank(),
@@ -2596,7 +2578,7 @@ recplot_server <- function(input, output, session) {
     pos_max <- base[[4]]
     base <- base[[1]]
     
-    old_base <- base
+    incoming_base <- base
     
     ends <- base[, max(End), by = contig]
     ends[, V1 := cumsum(V1) - 1 + 1:nrow(ends)]
@@ -2605,7 +2587,12 @@ recplot_server <- function(input, output, session) {
       
       base <- base[Start < trunc_degree, Start := trunc_degree]
       #Selects the bins at the end of each contig and subtracts trunc degree from it
-      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+      
+      base[, contig_len := max(End), by = contig]
+      base[End == contig_len, End := End - trunc_degree, ]
+      
+      trunc_base <- base
+      
       #If the final bin was too small, removes it.
       base <- base[Start <= End,]
       
@@ -2633,7 +2620,7 @@ recplot_server <- function(input, output, session) {
         geom_vline(xintercept = ends$V1/bp_div, col = "#AAAAAA40") +
         geom_raster()
       
-      base <- old_base
+      base <- trunc_base
       
       #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
       base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
@@ -2644,8 +2631,6 @@ recplot_server <- function(input, output, session) {
       colnames(depth_data)[3:6] = c("count", "Start", "End", "contig")
       
       group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
-      
-      old_depth <- depth_data
       
       depth_data$count[depth_data$count == 0] <- NA
       
@@ -2672,6 +2657,11 @@ recplot_server <- function(input, output, session) {
         ylab("Log 10 Depth")
       
       
+      #I worry that the modify in place permanently whoopsies things, so I change it back just in case
+      base[End == contig_len-trunc_degree, End := End + trunc_degree, ]
+      base[, contig_len := NULL, ]
+      
+      
     }else{
       
       if(is.na(gene_data)){
@@ -2695,13 +2685,8 @@ recplot_server <- function(input, output, session) {
       
       #fixup alterations
       gene_reset <- gene_data
-      
-      #read rec plot
-      base <- base[Start < trunc_degree, Start := trunc_degree]
-      #Selects the bins at the end of each contig and subtracts trunc degree from it
-      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
       #If the final bin was too small, removes it.
-      base <- base[Start <= End,]
+      #base <- base[Start <= End,]
       
       norm_factor <- min(base$End-base$Start) + 1
       
@@ -2709,87 +2694,56 @@ recplot_server <- function(input, output, session) {
       
       base$bp_count <- base$bp_count*(norm_factor/widths)
       
+      ratio <- nrow(base)/nrow(gene_data)
+      
+      setkeyv(base, c("contig", "Start"))
+      setkey(gene_data, "contig")
+      
+      base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
+      base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
+      base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
+      base[, gene_strand := rep(gene_data$strand, each = ratio) ]
+      base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+      
+      base <- base[Start < trunc_degree, Start := trunc_degree]
+      #Selects the bins at the end of each contig and subtracts trunc degree from it
+      
+      base[, contig_len := max(End), by = contig]
+      base[End == contig_len, End := End - trunc_degree, ]
+      
+      gene_base <- base
       
       #Genes only
       if(input$regions_interact == 1){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$gene_annotation == "N/A"] <- NA
       }
       #IGR only
       if(input$regions_interact == 2){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$gene_annotation != "N/A"] <- NA
       }
       #Genes + long IGR
       if(input$regions_interact == 3){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count[base$End-base$Start+1 < 6] <- NA
       }
+      #all regions
       if(input$regions_interact == 4){
-        base <- old_base
-        
-        ratio <- nrow(base)/nrow(gene_data)
-        
-        setkeyv(base, c("contig", "Start"))
-        setkey(gene_data, "contig")
-        
-        base[, gene_name := rep(gene_data$gene_name, each = ratio) ]
-        base[, gene_start := rep(gene_data$gene_start, each = ratio) ]
-        base[, gene_end := rep(gene_data$gene_end, each = ratio) ]
-        base[, gene_strand := rep(gene_data$strand, each = ratio) ]
-        base[, gene_annotation := rep(gene_data$annotation, each = ratio) ]
+        base <- NULL
+        base <- gene_base
         
         base$bp_count <- base$bp_count
       }
-      
-      #Sets any starts < trunc degree to trunc_degree
-      base <- base[Start < trunc_degree, Start := trunc_degree]
-      #Selects the bins at the end of each contig and subtracts trunc degree from it
-      base[base[, End > (max(End)-trunc_degree), by = contig]$V1, End := (End - trunc_degree),]
+
       #If the final bin was too small, removes it.
       base <- base[Start <= End,]
-      
-      norm_factor <- min(base$End-base$Start) + 1
-      
-      widths <- base$End - base$Start + 1
-      
-      base$bp_count <- base$bp_count*(norm_factor/widths)
       
       p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
                                                                                              "\nPos. in Contig: ", Start, "-", End,
@@ -2815,7 +2769,8 @@ recplot_server <- function(input, output, session) {
       
       
       #seqdepth chart
-      base <- old_base
+      base <- NULL
+      base <- gene_base
       
       #I  use the Z because the order matters for plotting the dark over the light color and that is determined by lexicographical ordering
       base$group_label <- ifelse(base$Pct_ID_bin-input$height >= input$in_group_min_interact, "depth.zin", "depth.out")
@@ -2827,17 +2782,14 @@ recplot_server <- function(input, output, session) {
       
       group.colors <- c(depth.zin = "darkblue", depth.out = "lightblue", depth.zin.nil = "darkblue", depth.out.nil = "lightblue")
       
-      old_depth <- depth_data
-      
       depth_data$count[depth_data$count == 0] <- NA
       
       #If bins need deleted at ends of contigs, this does so
-      depth_data <- depth_data[Start <= End, ]
+      #depth_data <- depth_data[Start <= End, ]
       
       
       #reset
       gene_data <- gene_reset
-      
       gene_data <- rbind(gene_data, gene_data)
       
       setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
@@ -2851,70 +2803,32 @@ recplot_server <- function(input, output, session) {
       
       setkeyv(depth_data, c("group_label", "seq_pos"))
       
+      gene_depth <- depth_data
+      
       #Genes only
       if(input$regions_interact == 1){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
-        
-        setkeyv(depth_data, c("group_label", "seq_pos"))
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         depth_data$count[depth_data$gene_annotation == "N/A"] <- NA
       }
       #IGR only
       if(input$regions_interact == 2){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
-        
-        setkeyv(depth_data, c("group_label", "seq_pos"))
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         depth_data$count[depth_data$gene_annotation != "N/A"] <- NA
       }
       #Genes + long IGR
       if(input$regions_interact == 3){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
-        
-        setkeyv(depth_data, c("group_label", "seq_pos"))
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         depth_data$count[depth_data$End-depth_data$Start + 1 < 6] <- NA
       }
       if(input$regions_interact == 4){
-        depth_data <- old_depth
-        
-        setkeyv(depth_data, c("group_label", "contig",  "Start", "End"))
-        setkey(gene_data, "contig")
-        
-        depth_data[, gene_name := gene_data$gene_name]
-        depth_data[, gene_start := gene_data$gene_start]
-        depth_data[, gene_end := gene_data$gene_end]
-        depth_data[, gene_strand := gene_data$strand]
-        depth_data[, gene_annotation := gene_data$annotation]
-        
-        setkeyv(depth_data, c("group_label", "seq_pos"))
+        depth_data <- NULL
+        depth_data <- gene_depth
         
         depth_data$count <- depth_data$count
       }
@@ -2944,7 +2858,7 @@ recplot_server <- function(input, output, session) {
               axis.text = element_text(size = 14)) +
         scale_color_manual(values = group.colors) +
         ylab("Log 10 Depth")
-      
+    
     }
     
     a <- list(
@@ -2969,6 +2883,8 @@ recplot_server <- function(input, output, session) {
     overplot <- subplot(list(seq_depth_chart, read_rec_plot), nrows = 2, shareX = T, heights = c(1/3, 2/3))
     
     progress$set(message = "Creating interactive Recruitment Plot", value = 1, detail = "Done!")
+    
+    base <- incoming_base
     
     return(overplot)
     

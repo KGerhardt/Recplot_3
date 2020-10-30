@@ -1274,6 +1274,7 @@ def add_gene_annotation(database, annotation):
 	cursor.executemany('INSERT INTO gene_annotation VALUES(?, ?)', annotations)
 	cursor.execute("commit")
 
+#Todo - make multiple
 def read_contigs(contig_file_name):
 	""" Reads a FastA file and returns
 		sequence ids and sizes
@@ -1380,7 +1381,7 @@ def fill_matrices(database, mag_id, sample_name, matrices, id_breaks, truncation
 				continue
 			#Reads in the last (default) 75 bp don't count
 			if read_stop > contig_maxes[contig_id] - truncation_degree:
-				read_stop = truncation_degree
+				read_stop = contig_maxes[contig_id] - truncation_degree
 			if read_start > read_stop:
 				continue
 				
@@ -1787,6 +1788,9 @@ def detect_file_format(file):
 		toomuch += 1
 	if toomuch > 1:
 		detected_format = "none"
+		
+	print(isfasta, isbam, issam, isblast, isdb, isassoc, isprodigalgff)
+	print(toomuch)
 		
 	return(detected_format)
 	
