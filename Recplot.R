@@ -828,7 +828,7 @@ recplot_UI <- function(){
                              
                              h4("Fine Tuning (Interactive)"),
                              
-                             numericInput("in_group_min_stat", "(6) In-Group Pct. ID", min = 50, max = 99.5, value = 90),
+                             numericInput("in_group_min_stat", "(6) In-Group Pct. ID", min = 50, max = 99.5, value = 95),
                              selectInput("linear_stat", "(7) BP Histogram Scale", choices = c("Linear" = 1, "Logarithmic" = 2), selected = 1),
                              
                              checkboxInput("show_peaks", "(8) Display Depth Peaks?"),
@@ -1735,9 +1735,9 @@ recplot_server <- function(input, output, session) {
       lower_bound <- 70
       
       if(input$task == "contigs"){
-        recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$width, input$height, lower_bound)
+        recplot_data <- extract_MAG_for_R(input$exist_dbname, input$samples_interact, input$mags_in_db_interact, input$width_interact, input$height_interact, lower_bound)
       }else{
-        recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples, input$mags_in_db, input$height, lower_bound)
+        recplot_data <- extract_genes_MAG_for_R(input$exist_dbname, input$samples_interact, input$mags_in_db_interact, input$height_interact, lower_bound)
         gene_data <<- gene_pydat_to_recplot_dat_prodigal(recplot_data[[3]])
       }
       
@@ -2097,6 +2097,8 @@ recplot_server <- function(input, output, session) {
     on.exit(progress$close())
     progress$set(message = "Creating interactive Recruitment Plot", value = 0.10, detail = "Please be patient. Printing an interactive plot takes a bit.")
     
+    base <- NULL
+    
     base <- one_mag()
     
     req(!is.na(base))
@@ -2234,16 +2236,9 @@ recplot_server <- function(input, output, session) {
       base[, contig_len := max(End), by = contig]
       base[End == contig_len, End := End - trunc_degree, ]
       
-      norm_factor <- min(base$End-base$Start) + 1
-      
-      widths <- base$End - base$Start + 1
-      
-      base$bp_count <- base$bp_count*(norm_factor/widths)
-      
       gene_base <- base
       
-      #If the final bin was too small, remeoves it.
-      base <- base[Start <= End,]
+
       
       #Genes only
       if(input$regions_interact == 1){
@@ -2278,6 +2273,9 @@ recplot_server <- function(input, output, session) {
       widths <- base$End - base$Start + 1
       
       base$bp_count <- base$bp_count*(norm_factor/widths)
+      
+      #If the final bin was too small, remeoves it.
+      base <- base[Start <= End,]
       
       p <- ggplot(base, aes(x = seq_pos, y = Pct_ID_bin, fill=log10(bp_count), text = paste0("Contig: ", contig,
                                                                                              "\nPos. in Contig: ", Start, "-", End,
@@ -2704,11 +2702,7 @@ recplot_server <- function(input, output, session) {
       #If the final bin was too small, removes it.
       #base <- base[Start <= End,]
       
-      norm_factor <- min(base$End-base$Start) + 1
-      
-      widths <- base$End - base$Start + 1
-      
-      base$bp_count <- base$bp_count*(norm_factor/widths)
+      #fwrite(base, "after.tsv", sep ="\t")
       
       ratio <- nrow(base)/nrow(gene_data)
       
@@ -2728,6 +2722,14 @@ recplot_server <- function(input, output, session) {
       base[End == contig_len, End := End - trunc_degree, ]
       
       gene_base <- base
+      
+      norm_factor <- min(base$End-base$Start) + 1
+      
+      widths <- base$End - base$Start + 1
+      
+      #fwrite(base, "before.tsv", sep ="\t")
+      
+      base$bp_count <- base$bp_count*(norm_factor/widths)
       
       #Genes only
       if(input$regions_interact == 1){
